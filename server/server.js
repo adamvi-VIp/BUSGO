@@ -15,7 +15,9 @@ const CONFIG = {
     API_KEY: process.env.GOLEMIO_API_KEY,
     CACHE_REFRESH_INTERVAL: 24 * 60 * 60 * 1000, // 24 hours
     PORT: process.env.PORT || 3001,
-    DEPARTURE_BATCH_DELAY: 100 // ms to wait for batching requests
+    DEPARTURE_BATCH_DELAY: 100, // ms to wait for batching requests
+    AUTO_REFRESH_INTERVAL: 30000, // 30 seconds for auto-refresh
+    DEPARTURE_MONITORING_INTERVAL: 10000 // 10 seconds for departure monitoring
 };
 
 // --- In-Memory Caches ---
@@ -30,6 +32,10 @@ let trackedVehicles = new Set();
 // Vehicle activity tracking
 const vehicleLastSeen = new Map(); // tripId -> timestamp
 const VEHICLE_INACTIVE_THRESHOLD = 2 * 60 * 1000; // 2 minutes
+
+// Real-time departure monitoring
+const activeDepartureMonitors = new Map(); // stopId -> { interval, lastData, clients }
+const departureHistory = new Map(); // stopId -> Set of departed tripIds
 
 // --- Express & Socket.IO Setup ---
 const app = express();
@@ -172,6 +178,107 @@ async function processDepartureQueue() {
     }
 }
 
+/**
+ * Monitors departures for a specific stop and detects when vehicles depart
+ */
+async function monitorDeparturesForStop(stopId) {
+    if (!CONFIG.API_KEY) return;
+
+    try {
+        const response = await axios.get(CONFIG.DEPARTURES_API_URL, {
+            headers: { 'X-Access-Token': CONFIG.API_KEY },
+            params: {
+                stopIds: JSON.stringify({ 0: [stopId] }),
+                limit: 20
+            }
+        });
+
+        const departures = response.data[0] || [];
+        const currentTripIds = new Set();
+        const now = Date.now();
+
+        // Process current departures
+        departures.forEach(departure => {
+            if (departure.trip?.trip_id) {
+                currentTripIds.add(departure.trip.trip_id);
+                
+                // Check if vehicle has departed (past departure time)
+                if (departure.departure?.timestamp_predicted) {
+                    const departureTime = new Date(departure.departure.timestamp_predicted).getTime();
+                    if (now > departureTime + 60000) { // 1 minute after scheduled departure
+                        // Vehicle has departed
+                        if (!departureHistory.has(stopId)) {
+                            departureHistory.set(stopId, new Set());
+                        }
+                        departureHistory.get(stopId).add(departure.trip.trip_id);
+                        
+                        // Notify clients about departure
+                        const monitor = activeDepartureMonitors.get(stopId);
+                        if (monitor && monitor.clients.size > 0) {
+                            monitor.clients.forEach(socketId => {
+                                const socket = io.sockets.sockets.get(socketId);
+                                if (socket) {
+                                    socket.emit('vehicleDeparted', {
+                                        stopId,
+                                        tripId: departure.trip.trip_id,
+                                        departure: departure
+                                    });
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        });
+
+        // Update monitor data
+        const monitor = activeDepartureMonitors.get(stopId);
+        if (monitor) {
+            monitor.lastData = departures;
+            monitor.lastUpdate = now;
+        }
+
+    } catch (error) {
+        console.error(`Error monitoring departures for stop ${stopId}:`, error.message);
+    }
+}
+
+/**
+ * Starts monitoring departures for a stop
+ */
+function startDepartureMonitoring(stopId, socketId) {
+    if (!activeDepartureMonitors.has(stopId)) {
+        activeDepartureMonitors.set(stopId, {
+            interval: setInterval(() => monitorDeparturesForStop(stopId), CONFIG.DEPARTURE_MONITORING_INTERVAL),
+            clients: new Set(),
+            lastData: null,
+            lastUpdate: Date.now()
+        });
+    }
+    
+    const monitor = activeDepartureMonitors.get(stopId);
+    monitor.clients.add(socketId);
+    
+    console.log(`Started departure monitoring for stop ${stopId}. Total monitors: ${activeDepartureMonitors.size}`);
+}
+
+/**
+ * Stops monitoring departures for a stop
+ */
+function stopDepartureMonitoring(stopId, socketId) {
+    const monitor = activeDepartureMonitors.get(stopId);
+    if (monitor) {
+        monitor.clients.delete(socketId);
+        
+        if (monitor.clients.size === 0) {
+            clearInterval(monitor.interval);
+            activeDepartureMonitors.delete(stopId);
+            departureHistory.delete(stopId);
+            console.log(`Stopped departure monitoring for stop ${stopId}. Remaining monitors: ${activeDepartureMonitors.size}`);
+        }
+    }
+}
+
 // Helper function to remove spaces and diacritics from text
 const normalizeText = (text) => {
     if (!text) return '';
@@ -188,6 +295,14 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         console.log(`User disconnected. Total users: ${io.engine.clientsCount}`);
+        
+        // Clean up departure monitoring for this socket
+        for (const [stopId, monitor] of activeDepartureMonitors.entries()) {
+            if (monitor.clients.has(socket.id)) {
+                stopDepartureMonitoring(stopId, socket.id);
+            }
+        }
+        
         // Optional: remove socket from any pending departure requests
         for(const [stopId, sockets] of departureRequestQueue.entries()){
             if(sockets.has(socket.id)){
@@ -225,6 +340,8 @@ io.on('connection', (socket) => {
     socket.on('requestDepartures', (stopId) => {
         if (stopId) {
             trackedStops.add(stopId);
+            // Start departure monitoring for this stop
+            startDepartureMonitoring(stopId, socket.id);
         }
         if (!CONFIG.API_KEY) {
             return socket.emit('departureError', { stopId, error: "API key not configured for real-time data." });
@@ -239,6 +356,12 @@ io.on('connection', (socket) => {
         // Clear existing timeout and set a new one
         if (batchTimeout) clearTimeout(batchTimeout);
         batchTimeout = setTimeout(processDepartureQueue, CONFIG.DEPARTURE_BATCH_DELAY);
+    });
+
+    socket.on('stopDepartureMonitoring', (stopId) => {
+        if (stopId) {
+            stopDepartureMonitoring(stopId, socket.id);
+        }
     });
 
     socket.on('requestVehiclePosition', async (tripId) => {
@@ -271,7 +394,7 @@ server.listen(CONFIG.PORT, () => {
 
 // At the bottom of server.js
 const logServerMetrics = () => {
-    console.log(`\n---------------------------------------\n[METRICS @ ${new Date().toLocaleTimeString()}]\n  - Connected Users: ${io.engine.clientsCount}\n  - Active Stops Being Refreshed: ${trackedStops.size}\n  - Active Vehicles Being Tracked: ${trackedVehicles.size}\n---------------------------------------\n    `);
+    console.log(`\n---------------------------------------\n[METRICS @ ${new Date().toLocaleTimeString()}]\n  - Connected Users: ${io.engine.clientsCount}\n  - Active Stops Being Refreshed: ${trackedStops.size}\n  - Active Vehicles Being Tracked: ${trackedVehicles.size}\n  - Active Departure Monitors: ${activeDepartureMonitors.size}\n---------------------------------------\n    `);
 };
 setInterval(logServerMetrics, 60000);
 
