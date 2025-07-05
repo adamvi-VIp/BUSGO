@@ -1,443 +1,267 @@
-const axios = require('axios');
-const { Server } = require('socket.io');
-const http = require('http');
-const express = require('express');
-const cors = require('cors');
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import axios from 'axios';
+import dotenv from 'dotenv';
+import { isEqual } from 'lodash-es';
 
-// Load environment variables
-require('dotenv').config();
+dotenv.config();
 
-// --- Configuration ---
-const CONFIG = {
-    STOPS_JSON_URL: 'https://data.pid.cz/stops/json/stops.json',
-    DEPARTURES_API_URL: 'https://api.golemio.cz/v2/public/departureboards',
-    VEHICLES_API_URL: 'https://api.golemio.cz/v2/vehiclepositions',
-    API_KEY: process.env.GOLEMIO_API_KEY,
-    CACHE_REFRESH_INTERVAL: 24 * 60 * 60 * 1000, // 24 hours
-    PORT: process.env.PORT || 3001,
-    DEPARTURE_BATCH_DELAY: 100, // ms to wait for batching requests
-    AUTO_REFRESH_INTERVAL: 30000, // 30 seconds for auto-refresh
-    DEPARTURE_MONITORING_INTERVAL: 10000 // 10 seconds for departure monitoring
-};
-
-// --- In-Memory Caches ---
-let stopsCache = [];
-let departureRequestQueue = new Map();
-let batchTimeout = null;
-
-// Metrics tracking
-let trackedStops = new Set();
-let trackedVehicles = new Set();
-
-// Vehicle activity tracking
-const vehicleLastSeen = new Map(); // tripId -> timestamp
-const VEHICLE_INACTIVE_THRESHOLD = 2 * 60 * 1000; // 2 minutes
-
-// Real-time departure monitoring
-const activeDepartureMonitors = new Map(); // stopId -> { interval, lastData, clients }
-const departureHistory = new Map(); // stopId -> Set of departed tripIds
-
-// --- Express & Socket.IO Setup ---
 const app = express();
-const server = http.createServer(app);
-app.use(cors({
-    origin: process.env.NODE_ENV === 'development' ? ['http://localhost:5173'] : process.env.FRONTEND_URL || true,
-    methods: ['GET', 'POST']
-}));
-const io = new Server(server, {
-    cors: {
-        origin: process.env.NODE_ENV === 'development' ? ['http://localhost:5173'] : process.env.FRONTEND_URL || true,
-        methods: ['GET', 'POST']
-    }
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: "*", // Allow all origins for development
+  },
 });
 
-// --- Helper Functions ---
+const API_KEY = process.env.PID_API_KEY;
+const STOPS_JSON_URL = 'https://data.pid.cz/stops/json/stops.json';
+const POLLING_INTERVAL = 10000; // 10 seconds
 
-/**
- * Calculates the distance between two GPS coordinates in kilometers using the Haversine formula.
- */
-function getDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371; // Radius of the Earth in km
-    const dLat = (lat2 - lat1) * (Math.PI / 180);
-    const dLon = (lon2 - lon1) * (Math.PI / 180);
-    const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+let processedStopsCache = [];
+
+// --- API Fetching Logic ---
+
+function filterNextDeparturesOnly(departures) {
+    if (!Array.isArray(departures) || departures.length === 0) {
+        return [];
+    }
+    
+    // Group departures by line number (route short_name)
+    const departuresByLine = {};
+    
+    departures.forEach(departure => {
+        const route = departure.route;
+        const lineNumber = route?.short_name || 'Unknown';
+        
+        if (!departuresByLine[lineNumber]) {
+            departuresByLine[lineNumber] = [];
+        }
+        departuresByLine[lineNumber].push(departure);
+    });
+    
+    // For each line, keep only the next departure (earliest one)
+    const nextDepartures = [];
+    
+    Object.keys(departuresByLine).forEach(lineNumber => {
+        const lineDepartures = departuresByLine[lineNumber];
+        
+        // Sort by departure time (earliest first)
+        lineDepartures.sort((a, b) => {
+            const timeA = a.departure_timestamp || a.arrival?.departure_timestamp || 0;
+            const timeB = b.departure_timestamp || b.arrival?.departure_timestamp || 0;
+            return timeA - timeB;
+        });
+        
+        // Take only the first (earliest) departure for this line
+        if (lineDepartures.length > 0) {
+            nextDepartures.push(lineDepartures[0]);
+        }
+    });
+    
+    // Sort all next departures by departure time
+    nextDepartures.sort((a, b) => {
+        const timeA = a.departure_timestamp || a.arrival?.departure_timestamp || 0;
+        const timeB = b.departure_timestamp || b.arrival?.departure_timestamp || 0;
+        return timeA - timeB;
+    });
+    
+    return nextDepartures;
 }
 
-/**
- * Downloads the stops.json file, processes it, and populates the in-memory cache.
- */
-async function fetchAndCacheStops() {
-    console.log('Attempting to download and cache stops data...');
-    try {
-        const response = await axios.get(CONFIG.STOPS_JSON_URL);
-        const rawData = response.data;
+async function fetchDeparturesFromPID(stopId) {
+    const url = `https://api.golemio.cz/v2/pid/departureboards?ids[]=${stopId}&limit=30&minutesAfter=180`;
+            console.log(`[${stopId}] Fetching from URL: ${url}`);
+        console.log(`[${stopId}] API Key present: ${!!API_KEY}`);
+        console.log(`[${stopId}] API Key (first 10 chars): ${API_KEY ? API_KEY.substring(0, 10) + '...' : 'NOT SET'}`);
+        try {
+            const response = await axios.get(url, {
+                headers: { 
+                    'x-access-token': API_KEY,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 5000
+            });
+
+        console.log(`[${stopId}] Full API response:`, JSON.stringify(response.data, null, 2));
         
-        const flattenedStops = [];
-        if (rawData && rawData.stopGroups) {
-            rawData.stopGroups.forEach(group => {
-                group.stops.forEach(stop => {
-                    // Use gtfsIds[0] as the stop ID if available, otherwise fall back to constructed ID
-                    const golemioStopId = stop.gtfsIds && stop.gtfsIds.length > 0 ? stop.gtfsIds[0] : `U${group.node}Z${stop.platform || '1'}`;
-                    flattenedStops.push({
-                        id: golemioStopId,
-                        name: group.name,
-                        platform: stop.platform,
+        if (response.data && Array.isArray(response.data.departures)) {
+            // Debug: Log the first departure to see the structure
+            if (response.data.departures.length > 0) {
+                console.log(`[${stopId}] Sample departure structure:`, JSON.stringify(response.data.departures[0], null, 2));
+            }
+            
+            // Filter to show only the next departure for each unique line number
+            const filteredDepartures = filterNextDeparturesOnly(response.data.departures);
+            console.log(`[${stopId}] Filtered ${response.data.departures.length} departures to ${filteredDepartures.length} unique lines`);
+            
+            return { ...response.data, departures: filteredDepartures };
+        } else if (response.data && response.data.data && Array.isArray(response.data.data.departures)) {
+            // Alternative response structure
+            console.log(`[${stopId}] Using alternative response structure`);
+            const filteredDepartures = filterNextDeparturesOnly(response.data.data.departures);
+            console.log(`[${stopId}] Filtered ${response.data.data.departures.length} departures to ${filteredDepartures.length} unique lines`);
+            
+            return { ...response.data.data, departures: filteredDepartures };
+        } else {
+            console.warn(`[${stopId}] Received invalid or empty data structure from PID API. Response:`, response.data);
+            return { departures: [] };
+        }
+    } catch (error) {
+        if (error.response) {
+            console.error(`[${stopId}] PID API Error: ${error.response.status} ${error.response.statusText}`);
+            console.error(`[${stopId}] Error response:`, error.response.data);
+        } else if (error.request) {
+            console.error(`[${stopId}] PID API No Response:`, error.message);
+        } else {
+            console.error(`[${stopId}] PID API Request Setup Error:`, error.message);
+        }
+        throw new Error(`Failed to fetch departures for stop ${stopId}.`);
+    }
+}
+
+async function cacheStopsData() {
+    try {
+        console.log(`[CACHE] Attempting to download and process stops data...`);
+        const response = await axios.get(STOPS_JSON_URL);
+        
+        if (response.data && Array.isArray(response.data.stopGroups)) {
+            const allStops = response.data.stopGroups.flatMap(group => 
+                group.stops.map(stop => ({
+                    ...stop,
+                    groupName: group.name,
+                }))
+            );
+            
+            // **BUG FIX:** Filter out invalid stops and create a truly unique ID for each stop point.
+            processedStopsCache = allStops
+                .filter(stop => stop.gtfsIds && stop.gtfsIds[0]) // Ensure a valid GTFS ID exists
+                .map((stop, index) => {
+                    const gtfsId = stop.gtfsIds[0];
+                    return {
+                        // A guaranteed unique ID for React keys - always use index to ensure uniqueness.
+                        uniqueStopPointId: `${gtfsId}-${index}`, 
+                        
+                        // The actual ID for making API calls.
+                        gtfsId: gtfsId, 
+                        
+                        name: stop.groupName,
                         lat: stop.lat,
                         lon: stop.lon,
-                        wheelchairAccess: stop.wheelchair_boarding,
                         zone: stop.zone,
-                        lines: stop.lines || [] // Include lines array for each stop
-                    });
+                        wheelchairAccess: stop.wheelchairAccess,
+                        platform: stop.platform || null,
+                        lines: stop.lines || []
+                    };
                 });
-            });
-        }
-        
-        stopsCache = flattenedStops;
-        console.log(`Successfully cached ${stopsCache.length} stops.`);
-    } catch (error) {
-        console.error('Failed to download or process stops data:', error.message);
-    }
-}
 
-/**
- * Processes the batched departure requests.
- */
-async function processDepartureQueue() {
-    if (departureRequestQueue.size === 0) return;
-
-    const queueCopy = new Map(departureRequestQueue);
-    departureRequestQueue.clear();
-
-    // console.log(`[DEBUG] Processing batched departure requests for ${queueCopy.size} stops.`);
-
-    // Build stopIds as an array of JSON strings, each with a single group
-    const stopIds = [];
-    const stopIdMapping = {};
-    let index = 0;
-    for (const [stopId, sockets] of queueCopy.entries()) {
-        stopIds.push(JSON.stringify({ [index]: [stopId] }));
-        stopIdMapping[index] = { stopId, sockets };
-        index++;
-    }
-
-    const requestConfig = {
-        headers: { 'X-Access-Token': CONFIG.API_KEY },
-        params: {
-            stopIds,
-            limit: 20
-        }
-    };
-
-    // Debug logging for outgoing request
-    // console.log('Requesting departures with stopIds:', stopIds);
-    // console.log('Request config:', JSON.stringify(requestConfig, null, 2));
-    
-    try {
-        const response = await axios.get(CONFIG.DEPARTURES_API_URL, requestConfig);
-        const departureGroups = response.data;
-
-        // Dispatch results back to the correct sockets
-        departureGroups.forEach((departures, i) => {
-            const { stopId, sockets } = stopIdMapping[i];
-            const dataToSend = { departures: departures || [] };
-            // Track tripIds for vehicle status
-            if (departures && Array.isArray(departures)) {
-                departures.forEach(dep => {
-                    if (dep.trip && dep.trip.trip_id) {
-                        vehicleLastSeen.set(dep.trip.trip_id, Date.now());
-                    }
-                });
-            }
-            sockets.forEach(socketId => {
-                const socket = io.sockets.sockets.get(socketId);
-                if (socket) {
-                    socket.emit('departureData', dataToSend);
-                }
-            });
-        });
-
-    } catch (error) {
-        console.error(`Error fetching batched departures:`, error.message);
-        if (error.response) {
-            console.error('[ERROR] Golemio Response Data:', JSON.stringify(error.response.data, null, 2));
-        }
-        // Notify all requesting clients of the failure
-        for (const { stopId, sockets } of Object.values(stopIdMapping)) {
-            sockets.forEach(socketId => {
-                const socket = io.sockets.sockets.get(socketId);
-                if (socket) {
-                    socket.emit('departureError', { stopId, error: 'Failed to fetch departures.' });
-                }
-            });
-        }
-    }
-}
-
-/**
- * Monitors departures for a specific stop and detects when vehicles depart
- */
-async function monitorDeparturesForStop(stopId) {
-    if (!CONFIG.API_KEY) return;
-
-    try {
-        const response = await axios.get(CONFIG.DEPARTURES_API_URL, {
-            headers: { 'X-Access-Token': CONFIG.API_KEY },
-            params: {
-                stopIds: JSON.stringify({ 0: [stopId] }),
-                limit: 20
-            }
-        });
-
-        const departures = response.data[0] || [];
-        const currentTripIds = new Set();
-        const now = Date.now();
-
-        // Process current departures
-        departures.forEach(departure => {
-            if (departure.trip?.trip_id) {
-                currentTripIds.add(departure.trip.trip_id);
-                
-                // Check if vehicle has departed (past departure time)
-                if (departure.departure?.timestamp_predicted) {
-                    const departureTime = new Date(departure.departure.timestamp_predicted).getTime();
-                    if (now > departureTime + 60000) { // 1 minute after scheduled departure
-                        // Vehicle has departed
-                        if (!departureHistory.has(stopId)) {
-                            departureHistory.set(stopId, new Set());
-                        }
-                        departureHistory.get(stopId).add(departure.trip.trip_id);
-                        
-                        // Notify clients about departure
-                        const monitor = activeDepartureMonitors.get(stopId);
-                        if (monitor && monitor.clients.size > 0) {
-                            monitor.clients.forEach(socketId => {
-                                const socket = io.sockets.sockets.get(socketId);
-                                if (socket) {
-                                    socket.emit('vehicleDeparted', {
-                                        stopId,
-                                        tripId: departure.trip.trip_id,
-                                        departure: departure
-                                    });
-                                }
-                            });
-                        }
-                    }
-                }
-            }
-        });
-
-        // Update monitor data
-        const monitor = activeDepartureMonitors.get(stopId);
-        if (monitor) {
-            monitor.lastData = departures;
-            monitor.lastUpdate = now;
+            console.log(`[CACHE] Successfully cached and processed ${processedStopsCache.length} stops.`);
+        } else {
+            throw new Error("Invalid data structure received from stops URL. Expected an object with a 'stopGroups' array.");
         }
 
     } catch (error) {
-        console.error(`Error monitoring departures for stop ${stopId}:`, error.message);
+        console.error('[CACHE] Failed to cache stops data:', error.message);
     }
 }
 
-/**
- * Starts monitoring departures for a stop
- */
-function startDepartureMonitoring(stopId, socketId) {
-    if (!activeDepartureMonitors.has(stopId)) {
-        activeDepartureMonitors.set(stopId, {
-            interval: setInterval(() => monitorDeparturesForStop(stopId), CONFIG.DEPARTURE_MONITORING_INTERVAL),
-            clients: new Set(),
-            lastData: null,
-            lastUpdate: Date.now()
-        });
-    }
-    
-    const monitor = activeDepartureMonitors.get(stopId);
-    monitor.clients.add(socketId);
-    
-    console.log(`Started departure monitoring for stop ${stopId}. Total monitors: ${activeDepartureMonitors.size}`);
-}
+// --- Real-time Polling Management ---
+const activeTimers = new Map();
+const lastKnownData = new Map();
 
-/**
- * Stops monitoring departures for a stop
- */
-function stopDepartureMonitoring(stopId, socketId) {
-    const monitor = activeDepartureMonitors.get(stopId);
-    if (monitor) {
-        monitor.clients.delete(socketId);
-        
-        if (monitor.clients.size === 0) {
-            clearInterval(monitor.interval);
-            activeDepartureMonitors.delete(stopId);
-            departureHistory.delete(stopId);
-            console.log(`Stopped departure monitoring for stop ${stopId}. Remaining monitors: ${activeDepartureMonitors.size}`);
-        }
-    }
-}
-
-// Helper function to remove spaces and diacritics from text
-const normalizeText = (text) => {
-    if (!text) return '';
-    return text
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/\s+/g, '')
-        .toLowerCase();
-};
-
-// --- Socket.IO Connection Logic ---
+// --- Socket.IO Connection Handling ---
 io.on('connection', (socket) => {
-    console.log(`User connected. Total users: ${io.engine.clientsCount}`);
+    console.log(`[INFO] User connected: ${socket.id}. Total users: ${io.engine.clientsCount}`);
 
-    socket.on('disconnect', () => {
-        console.log(`User disconnected. Total users: ${io.engine.clientsCount}`);
-        
-        // Clean up departure monitoring for this socket
-        for (const [stopId, monitor] of activeDepartureMonitors.entries()) {
-            if (monitor.clients.has(socket.id)) {
-                stopDepartureMonitoring(stopId, socket.id);
-            }
+    socket.on('searchStops', async (params) => {
+        if (!processedStopsCache || processedStopsCache.length === 0) {
+            return socket.emit('stopsError', { error: 'Stop data is not ready. Please try again in a moment.' });
         }
-        
-        // Optional: remove socket from any pending departure requests
-        for(const [stopId, sockets] of departureRequestQueue.entries()){
-            if(sockets.has(socket.id)){
-                sockets.delete(socket.id);
-                if(sockets.size === 0){
-                    departureRequestQueue.delete(stopId);
-                }
-            }
-        }
-    });
 
-    socket.on('searchStops', (data) => {
-        const { query, lat, lon } = data;
-
-        if (query) {
-            const normalizedQuery = normalizeText(query);
-            const results = stopsCache
-                .filter(stop => normalizeText(stop.name).includes(normalizedQuery))
-                .slice(0, 150);
-            socket.emit('stopsData', results);
-
-        } else if (lat && lon) {
-            const results = stopsCache
+        let results = [];
+        if (params && params.query) {
+            const query = params.query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            results = processedStopsCache.filter(stop => 
+                stop.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(query)
+            ).slice(0, 100);
+        } else if (params && params.lat && params.lon) {
+            results = processedStopsCache
                 .map(stop => ({
                     ...stop,
-                    distance: getDistance(lat, lon, stop.lat, stop.lon)
+                    distance: Math.sqrt(Math.pow(stop.lat - params.lat, 2) + Math.pow(stop.lon - params.lon, 2))
                 }))
-                .filter(stop => stop.distance <= 2)
                 .sort((a, b) => a.distance - b.distance)
                 .slice(0, 50);
-            socket.emit('stopsData', results);
         }
+        
+        socket.emit('stopsData', results);
     });
 
-    socket.on('requestDepartures', (stopId) => {
-        if (stopId) {
-            trackedStops.add(stopId);
-            // Start departure monitoring for this stop
-            startDepartureMonitoring(stopId, socket.id);
+    socket.on('requestDepartures', async (stopId) => {
+        // **BUG FIX:** Add a guard to prevent requests with null/undefined IDs.
+        if (!stopId) {
+            return console.error(`[ERROR] Received request for departures with a NULL stopId from socket ${socket.id}`);
         }
-        if (!CONFIG.API_KEY) {
-            return socket.emit('departureError', { stopId, error: "API key not configured for real-time data." });
-        }
+        
+        console.log(`[POLL] User ${socket.id} requested departures for stop [${stopId}]`);
+        if (activeTimers.has(stopId)) clearInterval(activeTimers.get(stopId));
 
-        // Add request to the queue
-        if (!departureRequestQueue.has(stopId)) {
-            departureRequestQueue.set(stopId, new Set());
-        }
-        departureRequestQueue.get(stopId).add(socket.id);
+        const fetchData = async () => {
+            try {
+                const newData = await fetchDeparturesFromPID(stopId);
+                if (!isEqual(newData, lastKnownData.get(stopId))) {
+                    console.log(`[POLL] Data for [${stopId}] changed. Emitting to client ${socket.id}.`);
+                    socket.emit('departureData', newData);
+                    lastKnownData.set(stopId, newData);
+                }
+            } catch (error) {
+                console.error(`[ERROR] Polling for [${stopId}] failed:`, error.message);
+                socket.emit('departureError', { stopId, error: 'Failed to fetch new departure data.' });
+                clearInterval(activeTimers.get(stopId));
+                activeTimers.delete(stopId);
+            }
+        };
 
-        // Clear existing timeout and set a new one
-        if (batchTimeout) clearTimeout(batchTimeout);
-        batchTimeout = setTimeout(processDepartureQueue, CONFIG.DEPARTURE_BATCH_DELAY);
+        fetchData();
+        const intervalId = setInterval(fetchData, POLLING_INTERVAL);
+        activeTimers.set(stopId, intervalId);
     });
 
     socket.on('stopDepartureMonitoring', (stopId) => {
-        if (stopId) {
-            stopDepartureMonitoring(stopId, socket.id);
+        if (activeTimers.has(stopId)) {
+            console.log(`[POLL] User ${socket.id} stopped monitoring stop [${stopId}]`);
+            clearInterval(activeTimers.get(stopId));
+            activeTimers.delete(stopId);
+            lastKnownData.delete(stopId);
         }
     });
 
-    socket.on('requestVehiclePosition', async (tripId) => {
-        if (tripId) {
-            trackedVehicles.add(tripId);
-        }
-        if (!CONFIG.API_KEY) {
-            return socket.emit('vehiclePositionError', { tripId, error: "API key not configured for real-time data." });
-        }
-        try {
-            const response = await axios.get(`${CONFIG.VEHICLES_API_URL}/${tripId}`, {
-                headers: { 'X-Access-Token': CONFIG.API_KEY }
-            });
-            socket.emit('vehiclePositionData', response.data);
-        } catch (error) {
-            if (error.response && error.response.status !== 404) {
-                console.error(`Error fetching vehicle position for trip ${tripId}:`, error.message);
-            }
-            socket.emit('vehiclePositionError', { tripId, error: 'Failed to fetch vehicle position.' });
-        }
+    socket.on('disconnect', () => {
+        console.log(`[INFO] User disconnected: ${socket.id}`);
     });
 });
 
 // --- Server Initialization ---
-server.listen(CONFIG.PORT, () => {
-    console.log(`Server listening on port ${CONFIG.PORT}`);
-    fetchAndCacheStops();
-    setInterval(fetchAndCacheStops, CONFIG.CACHE_REFRESH_INTERVAL);
+const PORT = process.env.PORT || 3001;
+httpServer.listen(PORT, () => {
+    const border = '===================================================';
+    const emptyLine = `|                                                 |`;
+    const apiKeyStatus = API_KEY ? 'Loaded Successfully' : 'NOT FOUND - .env file missing or invalid?';
+    
+    console.log('\n' + border);
+    console.log(emptyLine);
+    console.log(`|       🚌 PID Departures Backend Server          |`);
+    console.log(emptyLine);
+    console.log(border);
+    console.log(`|                                                 |`);
+    console.log(`|  > Status:          Running                     |`);
+    console.log(`|  > Listening on:    http://localhost:${PORT}      |`);
+    console.log(`|  > PID API Key:     ${apiKeyStatus.padEnd(26)}|`);
+    console.log(`|  > Polling Speed:   ${(POLLING_INTERVAL / 1000).toString().padEnd(2)} seconds                 |`);
+    console.log(emptyLine);
+    console.log(border + '\n');
+
+    cacheStopsData();
+    setInterval(cacheStopsData, 24 * 60 * 60 * 1000); // Re-cache once a day
 });
-
-// At the bottom of server.js
-const logServerMetrics = () => {
-    console.log(`\n---------------------------------------\n[METRICS @ ${new Date().toLocaleTimeString()}]\n  - Connected Users: ${io.engine.clientsCount}\n  - Active Stops Being Refreshed: ${trackedStops.size}\n  - Active Vehicles Being Tracked: ${trackedVehicles.size}\n  - Active Departure Monitors: ${activeDepartureMonitors.size}\n---------------------------------------\n    `);
-};
-setInterval(logServerMetrics, 60000);
-
-// --- Periodic Vehicle Status Refresh ---
-async function refreshVehicleStatuses() {
-    if (!CONFIG.API_KEY) return;
-    const now = Date.now();
-    // Only keep tripIds seen in the last 10 minutes
-    for (const [tripId, lastSeen] of vehicleLastSeen.entries()) {
-        if (now - lastSeen > 10 * 60 * 1000) {
-            vehicleLastSeen.delete(tripId);
-        }
-    }
-    // Gather all tripIds from trackedVehicles (populated by requestVehiclePosition) and from recent departures
-    const allTripIds = Array.from(new Set([
-        ...trackedVehicles,
-        ...Array.from(vehicleLastSeen.keys())
-    ]));
-    if (allTripIds.length === 0) return;
-    // Fetch vehicle positions in parallel (batching could be added if needed)
-    const activeTripIds = new Set();
-    await Promise.all(allTripIds.map(async (tripId) => {
-        try {
-            const response = await axios.get(`${CONFIG.VEHICLES_API_URL}/${tripId}`, {
-                headers: { 'X-Access-Token': CONFIG.API_KEY }
-            });
-            if (response.data && response.data.properties && response.data.properties.last_update) {
-                vehicleLastSeen.set(tripId, now);
-                activeTripIds.add(tripId);
-            }
-        } catch (error) {
-            // If 404, vehicle is not active; ignore
-        }
-    }));
-    // Determine inactive tripIds
-    const inactiveTripIds = allTripIds.filter(tripId => {
-        const lastSeen = vehicleLastSeen.get(tripId);
-        return !lastSeen || (now - lastSeen > VEHICLE_INACTIVE_THRESHOLD);
-    });
-    // Broadcast to all clients
-    io.emit('vehicleStatusUpdate', {
-        active: Array.from(activeTripIds),
-        inactive: inactiveTripIds
-    });
-}
-setInterval(refreshVehicleStatuses, 30000); // every 30 seconds

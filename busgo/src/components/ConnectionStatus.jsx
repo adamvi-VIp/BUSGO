@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 
-// Initialize socket connection
-export const socket = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001');
+// Initialize socket connection.
+// By not providing a URL, it defaults to the window's origin,
+// allowing Vite's proxy to correctly handle the request in development.
+export const socket = io();
 
 const ConnectionStatus = () => {
     const [isConnected, setIsConnected] = useState(socket.connected);
@@ -25,10 +27,16 @@ const ConnectionStatus = () => {
         socket.on('disconnect', onDisconnect);
         socket.on('connecting', onConnecting);
 
+        // Handle connection errors for better feedback
+        socket.on('connect_error', () => {
+            setConnectionStatus('disconnected');
+        });
+
         return () => {
             socket.off('connect', onConnect);
             socket.off('disconnect', onDisconnect);
             socket.off('connecting', onConnecting);
+            socket.off('connect_error');
         };
     }, []);
 
