@@ -59,16 +59,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/server/node_modules ./server/node
 # Copy environment file if it exists
 COPY .env* ./server/
 
-# Copy startup scripts
-COPY start.sh ./start.sh
-COPY start.bat ./start.bat
-RUN chmod +x ./start.sh
-
 # Switch to non-root user
 USER nextjs
 
 # Expose port
 EXPOSE 3001
 
-# Start the application using the startup script
-CMD ["./start.sh"] 
+# Start the backend server directly
+CMD ["node", "server/server.js"] 

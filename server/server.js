@@ -306,6 +306,12 @@ if (process.env.NODE_ENV === 'production' || !process.env.NODE_ENV) {
 
 // --- Server Initialization ---
 const PORT = process.env.PORT || 3001;
+
+console.log('🚀 Starting HopGo server...');
+console.log(`📁 Current directory: ${process.cwd()}`);
+console.log(`🔧 NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`🌍 TZ: ${process.env.TZ}`);
+
 httpServer.listen(PORT, () => {
     const border = '===================================================';
     const emptyLine = `|                                                 |`;
