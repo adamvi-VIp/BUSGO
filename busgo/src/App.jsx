@@ -584,7 +584,7 @@ function App() {
             <div className={`
                 absolute bottom-0 left-0 right-0 z-30
                 transition-transform duration-500 ease-in-out
-                ${isPanelExpanded ? 'translate-y-10' : 'translate-y-[calc(100%-170px)]'}
+                ${isPanelExpanded ? 'translate-y-10' : 'translate-y-[calc(100%-220px)]'}
             `}>
                 <div className="w-full h-[calc(100vh-80px)] max-w-3xl mx-auto flex flex-col glass-effect rounded-t-2xl shadow-2xl overflow-hidden">
                     <div className="p-3 text-center text-gray-300 border-b border-gray-700/60">
