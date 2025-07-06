@@ -27,7 +27,7 @@ function MapViewUpdater({ center, zoom, shouldUpdate }) {
   return null;
 }
 
-const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, socket }) => {
+const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, socket, isRefreshing }) => {
     const mapPosition = userLocation 
         ? [userLocation.latitude, userLocation.longitude] 
         : [50.0755, 14.4378]; // Prague center fallback
@@ -40,7 +40,7 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
     // Track when we should actually move the camera
     const [shouldUpdateCamera, setShouldUpdateCamera] = useState(false);
     
-    // Only move camera when a stop is selected (not when user location changes or stops update)
+    // Move camera when a stop is selected or refresh button is clicked
     useEffect(() => {
         if (selectedStop) {
             console.log('[MAP] Stop selected, moving camera to:', selectedStop.name);
@@ -49,6 +49,16 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
             setTimeout(() => setShouldUpdateCamera(false), 100);
         }
     }, [selectedStop?.gtfsId]);
+    
+    // Move camera when refresh button is clicked (isRefreshing becomes true)
+    useEffect(() => {
+        if (isRefreshing && userLocation) {
+            console.log('[MAP] Refresh clicked, moving camera to user location');
+            setShouldUpdateCamera(true);
+            // Reset after a short delay to prevent continuous updates
+            setTimeout(() => setShouldUpdateCamera(false), 100);
+        }
+    }, [isRefreshing, userLocation]);
 
     // Only log when stops or selectedStop changes, not on every render
     useEffect(() => {
@@ -515,6 +525,7 @@ function App() {
                 onStopSelect={handleStopSelect} 
                 selectedStop={selectedStop}
                 socket={socket}
+                isRefreshing={isRefreshing}
             />
             
             <header className="absolute top-0 left-0 w-full z-20 p-4 pointer-events-none">
