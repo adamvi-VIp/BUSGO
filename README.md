@@ -31,7 +31,13 @@ cd BUSGO
 
 ### 2. Configure Environment
 
-Edit the `.env` file and add your PID API key:
+Copy the example environment file and add your PID API key:
+
+```bash
+cp env.example .env
+```
+
+Then edit the `.env` file:
 
 ```env
 NODE_ENV=production
@@ -60,6 +66,25 @@ docker-compose up --build -d
 
 - **Frontend**: http://localhost
 - **Backend**: http://localhost:3001
+
+## 🏗️ Build System Deployment
+
+For automated build systems (like Railway, Render, etc.):
+
+```bash
+# The main Dockerfile builds the frontend
+docker build -t hopgo-frontend .
+
+# For backend-only deployment
+docker build -f Dockerfile.backend -t hopgo-backend .
+```
+
+### Environment Variables for Build Systems:
+
+Set these environment variables in your build system:
+- `PID_API_KEY`: Your PID API key from https://api.golemio.cz/
+- `NODE_ENV`: production
+- `TZ`: Europe/Prague
 
 ## 🐳 Docker Architecture
 
