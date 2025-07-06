@@ -300,6 +300,8 @@ if (process.env.NODE_ENV === 'production' || !process.env.NODE_ENV) {
         console.log(`[STATIC] Serving index.html for route: ${req.path}`);
         res.sendFile(indexPath);
     });
+} else {
+    console.log(`[STATIC] Not serving static files - NODE_ENV: ${process.env.NODE_ENV}`);
 }
 
 // --- Server Initialization ---

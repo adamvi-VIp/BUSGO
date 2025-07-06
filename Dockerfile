@@ -36,7 +36,6 @@ COPY server/ ./server/
 # Build the frontend
 WORKDIR /app/busgo
 RUN npm run build
-RUN ls -la dist/
 
 # Production image, copy all the files and run the app
 FROM base AS runner
@@ -52,7 +51,6 @@ RUN adduser --system --uid 1001 nextjs
 
 # Copy built frontend
 COPY --from=builder --chown=nextjs:nodejs /app/busgo/dist ./public
-RUN ls -la public/
 
 # Copy backend
 COPY --from=builder --chown=nextjs:nodejs /app/server ./server
@@ -61,11 +59,16 @@ COPY --from=builder --chown=nextjs:nodejs /app/server/node_modules ./server/node
 # Copy environment file if it exists
 COPY .env* ./server/
 
+# Copy startup scripts
+COPY start.sh ./start.sh
+COPY start.bat ./start.bat
+RUN chmod +x ./start.sh
+
 # Switch to non-root user
 USER nextjs
 
 # Expose port
 EXPOSE 3001
 
-# Start the backend server
-CMD ["node", "server/server.js"] 
+# Start the application using the startup script
+CMD ["./start.sh"] 
