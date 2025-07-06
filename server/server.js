@@ -269,9 +269,26 @@ io.on('connection', (socket) => {
 });
 
 // --- Static File Serving for Production ---
-if (process.env.NODE_ENV === 'production') {
+// Always serve static files in production, or if NODE_ENV is not set
+if (process.env.NODE_ENV === 'production' || !process.env.NODE_ENV) {
+    const publicPath = path.join(__dirname, '../public');
+    const indexPath = path.join(publicPath, 'index.html');
+    
+    console.log(`[STATIC] Serving static files from: ${publicPath}`);
+    console.log(`[STATIC] Index file path: ${indexPath}`);
+    
+    // Check if files exist
+    const fs = await import('fs');
+    if (fs.existsSync(publicPath)) {
+        console.log(`[STATIC] Public directory exists`);
+        const files = fs.readdirSync(publicPath);
+        console.log(`[STATIC] Files in public directory:`, files);
+    } else {
+        console.log(`[STATIC] Public directory does not exist`);
+    }
+    
     // Serve static files from the public directory
-    app.use(express.static(path.join(__dirname, '../public')));
+    app.use(express.static(publicPath));
     
     // Handle SPA routing - serve index.html for all non-API routes
     app.get('*', (req, res) => {
@@ -280,7 +297,8 @@ if (process.env.NODE_ENV === 'production') {
             return res.status(404).send('Not found');
         }
         
-        res.sendFile(path.join(__dirname, '../public/index.html'));
+        console.log(`[STATIC] Serving index.html for route: ${req.path}`);
+        res.sendFile(indexPath);
     });
 }
 
