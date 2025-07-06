@@ -27,7 +27,7 @@ function MapViewUpdater({ center, zoom, shouldUpdate }) {
   return null;
 }
 
-const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, socket, isRefreshing }) => {
+const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, socket, isRefreshing, shouldUpdateCamera }) => {
     const mapPosition = userLocation 
         ? [userLocation.latitude, userLocation.longitude] 
         : [50.0755, 14.4378]; // Prague center fallback
@@ -38,15 +38,15 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
         : mapPosition;
 
     // Track when we should actually move the camera
-    const [shouldUpdateCamera, setShouldUpdateCamera] = useState(false);
+    const [localShouldUpdateCamera, setLocalShouldUpdateCamera] = useState(false);
     
-    // Move camera when a stop is selected or refresh button is clicked
+    // Move camera when a stop is selected, refresh button is clicked, or user location is first set
     useEffect(() => {
         if (selectedStop) {
             console.log('[MAP] Stop selected, moving camera to:', selectedStop.name);
-            setShouldUpdateCamera(true);
+            setLocalShouldUpdateCamera(true);
             // Reset after a short delay to prevent continuous updates
-            setTimeout(() => setShouldUpdateCamera(false), 100);
+            setTimeout(() => setLocalShouldUpdateCamera(false), 100);
         }
     }, [selectedStop?.gtfsId]);
     
@@ -54,11 +54,21 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
     useEffect(() => {
         if (isRefreshing && userLocation) {
             console.log('[MAP] Refresh clicked, moving camera to user location');
-            setShouldUpdateCamera(true);
+            setLocalShouldUpdateCamera(true);
             // Reset after a short delay to prevent continuous updates
-            setTimeout(() => setShouldUpdateCamera(false), 100);
+            setTimeout(() => setLocalShouldUpdateCamera(false), 100);
         }
     }, [isRefreshing, userLocation]);
+    
+    // Move camera when shouldUpdateCamera prop changes (from parent)
+    useEffect(() => {
+        if (shouldUpdateCamera && userLocation) {
+            console.log('[MAP] Moving camera to user location on app start');
+            setLocalShouldUpdateCamera(true);
+            // Reset after a short delay to prevent continuous updates
+            setTimeout(() => setLocalShouldUpdateCamera(false), 100);
+        }
+    }, [shouldUpdateCamera, userLocation]);
 
     // Only log when stops or selectedStop changes, not on every render
     useEffect(() => {
@@ -76,7 +86,7 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
                 attributionControl={false}
             >
                 {/* Only move camera when stop is selected, not when user moves map */}
-                <MapViewUpdater center={centerPosition} zoom={selectedStop ? 16 : 16} shouldUpdate={shouldUpdateCamera} />
+                <MapViewUpdater center={centerPosition} zoom={selectedStop ? 16 : 16} shouldUpdate={localShouldUpdateCamera} />
                 <MapLocationTracker socket={socket} />
                 <TileLayer
                     attribution=""
@@ -349,6 +359,7 @@ function App() {
     const [errors, setErrors] = useState([]);
     const [userLocation, setUserLocation] = useState(null);
     const [isPanelExpanded, setIsPanelExpanded] = useState(false);
+    const [shouldUpdateCamera, setShouldUpdateCamera] = useState(false);
 
     const debounceTimeout = useRef(null);
     const hasFetchedForLocation = useRef(false);
@@ -403,6 +414,9 @@ function App() {
                 setUserLocation({ latitude, longitude });
                 // Add timestamp to force fresh data
                 socket.emit('searchStops', { lat: latitude, lon: longitude, timestamp: Date.now() });
+                // Trigger camera movement to user location
+                setShouldUpdateCamera(true);
+                setTimeout(() => setShouldUpdateCamera(false), 100);
             }, () => {
                 setIsLoading(false);
                 setErrors(prev => [...prev, "Location access denied. Using default location."]);
@@ -526,6 +540,7 @@ function App() {
                 selectedStop={selectedStop}
                 socket={socket}
                 isRefreshing={isRefreshing}
+                shouldUpdateCamera={shouldUpdateCamera}
             />
             
             <header className="absolute top-0 left-0 w-full z-20 p-4 pointer-events-none">
