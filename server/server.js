@@ -4,8 +4,14 @@ import { Server } from 'socket.io';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { isEqual } from 'lodash-es';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
+
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const httpServer = createServer(app);
@@ -261,6 +267,22 @@ io.on('connection', (socket) => {
         }
     });
 });
+
+// --- Static File Serving for Production ---
+if (process.env.NODE_ENV === 'production') {
+    // Serve static files from the public directory
+    app.use(express.static(path.join(__dirname, '../public')));
+    
+    // Handle SPA routing - serve index.html for all non-API routes
+    app.get('*', (req, res) => {
+        // Skip API routes
+        if (req.path.startsWith('/socket.io/')) {
+            return res.status(404).send('Not found');
+        }
+        
+        res.sendFile(path.join(__dirname, '../public/index.html'));
+    });
+}
 
 // --- Server Initialization ---
 const PORT = process.env.PORT || 3001;
