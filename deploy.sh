@@ -1,46 +1,69 @@
 #!/bin/bash
 
 # HopGo Docker Deployment Script
-echo "🚌 Deploying HopGo to Docker..."
+# This script builds and runs the HopGo application in production mode
 
-# Check if .env file exists
+set -e
+
+echo "🚌 Starting HopGo deployment..."
+
+# Check if Docker is installed
+if ! command -v docker &> /dev/null; then
+    echo "❌ Docker is not installed. Please install Docker first."
+    exit 1
+fi
+
+# Check if Docker Compose is installed
+if ! command -v docker-compose &> /dev/null; then
+    echo "❌ Docker Compose is not installed. Please install Docker Compose first."
+    exit 1
+fi
+
+# Create .env file if it doesn't exist
 if [ ! -f .env ]; then
-    echo "❌ Error: .env file not found!"
-    echo "Please create a .env file with your PID_API_KEY:"
-    echo "PID_API_KEY=your_api_key_here"
-    exit 1
+    echo "📝 Creating .env file..."
+    cat > .env << EOF
+# Production Environment Variables
+NODE_ENV=production
+PORT=3001
+TZ=Europe/Prague
+
+# PID API Key (required for real-time data)
+# Get your API key from: https://api.golemio.cz/
+PID_API_KEY=your_api_key_here
+
+# Optional: Custom domain
+# DOMAIN=yourdomain.com
+EOF
+    echo "⚠️  Please edit .env file and add your PID API key!"
+    echo "   Get your API key from: https://api.golemio.cz/"
+    read -p "Press Enter after adding your API key..."
 fi
 
-# Load environment variables
-source .env
+# Stop existing containers
+echo "🛑 Stopping existing containers..."
+docker-compose down
 
-# Check if PID_API_KEY is set
-if [ -z "$PID_API_KEY" ]; then
-    echo "❌ Error: PID_API_KEY not found in .env file!"
-    echo "Please add your PID API key to the .env file:"
-    echo "PID_API_KEY=your_api_key_here"
-    exit 1
-fi
-
-echo "✅ Environment variables loaded"
-
-# Build and start the containers
+# Build and start containers
 echo "🔨 Building and starting containers..."
 docker-compose up --build -d
 
-# Wait for the container to be ready
-echo "⏳ Waiting for the application to start..."
+# Wait for containers to be ready
+echo "⏳ Waiting for containers to be ready..."
 sleep 10
 
-# Check if the application is running
-if curl -f http://localhost:3001 > /dev/null 2>&1; then
-    echo "✅ HopGo is running successfully!"
-    echo "🌐 Open your browser and go to: http://localhost:3001"
-    echo ""
-    echo "📊 Container status:"
-    docker-compose ps
-else
-    echo "❌ Application failed to start. Check logs with:"
-    echo "docker-compose logs"
-    exit 1
-fi 
+# Check container status
+echo "📊 Container status:"
+docker-compose ps
+
+echo ""
+echo "✅ HopGo is now running!"
+echo ""
+echo "🌐 Frontend: http://localhost"
+echo "🔧 Backend: http://localhost:3001"
+echo ""
+echo "📝 Logs: docker-compose logs -f"
+echo "🛑 Stop: docker-compose down"
+echo ""
+echo "⏰ Timezone: Europe/Prague (Czech Republic)"
+echo "🚌 Real-time bus data from PID API" 

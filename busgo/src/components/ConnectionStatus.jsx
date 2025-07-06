@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 
 // Initialize socket connection.
-// By not providing a URL, it defaults to the window's origin,
-// allowing Vite's proxy to correctly handle the request in development.
-export const socket = io();
+// In development, it uses the current origin (localhost:5173)
+// In production, it connects to the same domain (nginx proxy)
+const socketUrl = import.meta.env.PROD ? window.location.origin : undefined;
+export const socket = io(socketUrl);
 
 const ConnectionStatus = () => {
     const [isConnected, setIsConnected] = useState(socket.connected);

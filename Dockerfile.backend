@@ -1,0 +1,26 @@
+# Backend Dockerfile
+FROM node:18-alpine
+
+# Set timezone to Prague
+ENV TZ=Europe/Prague
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+WORKDIR /app
+
+# Copy package files
+COPY server/package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy source code
+COPY server/ .
+
+# Create .env file for production
+RUN echo "PORT=3001" > .env && \
+    echo "NODE_ENV=production" >> .env
+
+# Expose port 3001
+EXPOSE 3001
+
+CMD ["node", "server.js"] 

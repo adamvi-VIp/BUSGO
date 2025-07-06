@@ -4,14 +4,8 @@ import { Server } from 'socket.io';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { isEqual } from 'lodash-es';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 dotenv.config();
-
-// Get __dirname equivalent in ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 const httpServer = createServer(app);
@@ -268,50 +262,8 @@ io.on('connection', (socket) => {
     });
 });
 
-// --- Static File Serving for Production ---
-// Always serve static files in production, or if NODE_ENV is not set
-if (process.env.NODE_ENV === 'production' || !process.env.NODE_ENV) {
-    const publicPath = path.join(__dirname, '../public');
-    const indexPath = path.join(publicPath, 'index.html');
-    
-    console.log(`[STATIC] Serving static files from: ${publicPath}`);
-    console.log(`[STATIC] Index file path: ${indexPath}`);
-    
-    // Check if files exist
-    const fs = await import('fs');
-    if (fs.existsSync(publicPath)) {
-        console.log(`[STATIC] Public directory exists`);
-        const files = fs.readdirSync(publicPath);
-        console.log(`[STATIC] Files in public directory:`, files);
-    } else {
-        console.log(`[STATIC] Public directory does not exist`);
-    }
-    
-    // Serve static files from the public directory
-    app.use(express.static(publicPath));
-    
-    // Handle SPA routing - serve index.html for all non-API routes
-    app.get('*', (req, res) => {
-        // Skip API routes
-        if (req.path.startsWith('/socket.io/')) {
-            return res.status(404).send('Not found');
-        }
-        
-        console.log(`[STATIC] Serving index.html for route: ${req.path}`);
-        res.sendFile(indexPath);
-    });
-} else {
-    console.log(`[STATIC] Not serving static files - NODE_ENV: ${process.env.NODE_ENV}`);
-}
-
 // --- Server Initialization ---
 const PORT = process.env.PORT || 3001;
-
-console.log('🚀 Starting HopGo server...');
-console.log(`📁 Current directory: ${process.cwd()}`);
-console.log(`🔧 NODE_ENV: ${process.env.NODE_ENV}`);
-console.log(`🌍 TZ: ${process.env.TZ}`);
-
 httpServer.listen(PORT, () => {
     const border = '===================================================';
     const emptyLine = `|                                                 |`;
