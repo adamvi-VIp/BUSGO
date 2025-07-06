@@ -402,7 +402,24 @@ function App() {
                 const { latitude, longitude } = position.coords;
                 setUserLocation({ latitude, longitude });
                 // Add timestamp to force fresh data
-                socket.emit('searchStops', { lat: latitude, lon: longitude, timestamp: Date.now() });
+                if (socket.connected) {
+                    socket.emit('searchStops', { lat: latitude, lon: longitude, timestamp: Date.now() });
+                } else {
+                    // If backend is not available, show demo data
+                    setStops([
+                        {
+                            uniqueStopPointId: 'demo-1',
+                            gtfsId: 'demo-1',
+                            name: 'Demo Stop - Václavské náměstí',
+                            lat: 50.0755,
+                            lon: 14.4378,
+                            platform: 'A',
+                            zone: 1,
+                            wheelchairAccess: 1
+                        }
+                    ]);
+                    setIsLoading(false);
+                }
             }, () => {
                 setIsLoading(false);
                 setErrors(prev => [...prev, "Location access denied. Using default location."]);

@@ -31,8 +31,8 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 # Copy built app from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf
+# Copy standalone nginx configuration (no backend dependency)
+COPY nginx.standalone.conf /etc/nginx/nginx.conf
 
 # Expose port 80
 EXPOSE 80

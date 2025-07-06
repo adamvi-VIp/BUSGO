@@ -24,12 +24,16 @@ const MapLocationTracker = ({ socket }) => {
                 // Set new timeout to fetch stops after 0.5 seconds of no movement
                 timeoutRef.current = setTimeout(() => {
                     console.log('[MAP] Fetching stops for new location:', currentCenter);
-                    socket.emit('searchStops', { 
-                        lat: currentCenter[0], 
-                        lon: currentCenter[1], 
-                        timestamp: Date.now(),
-                        source: 'map-movement'
-                    });
+                    if (socket.connected) {
+                        socket.emit('searchStops', { 
+                            lat: currentCenter[0], 
+                            lon: currentCenter[1], 
+                            timestamp: Date.now(),
+                            source: 'map-movement'
+                        });
+                    } else {
+                        console.log('[MAP] Backend not connected, skipping stop fetch');
+                    }
                     // Don't call onLocationChange to avoid moving map back to user location
                 }, 500);
                 

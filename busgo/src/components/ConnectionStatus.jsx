@@ -4,8 +4,14 @@ import io from 'socket.io-client';
 // Initialize socket connection.
 // In development, it uses the current origin (localhost:5173)
 // In production, it connects to the same domain (nginx proxy)
+// If backend is not available, the app will still work but without real-time data
 const socketUrl = import.meta.env.PROD ? window.location.origin : undefined;
-export const socket = io(socketUrl);
+export const socket = io(socketUrl, {
+    timeout: 5000,
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000
+});
 
 const ConnectionStatus = () => {
     const [isConnected, setIsConnected] = useState(socket.connected);
