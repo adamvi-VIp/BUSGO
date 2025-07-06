@@ -1,0 +1,70 @@
+# Multi-service Dockerfile for Koyeb
+# This runs both frontend and backend in a single container
+
+FROM node:18-alpine AS builder
+
+# Set timezone to Prague
+ENV TZ=Europe/Prague
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+WORKDIR /app
+
+# Copy package files
+COPY busgo/package*.json ./
+
+# Install dependencies (including dev dependencies needed for build)
+RUN npm ci
+
+# Copy source code
+COPY busgo/ .
+
+# Build the app
+RUN npm run build
+
+# Backend stage
+FROM node:18-alpine AS backend
+
+# Set timezone to Prague
+ENV TZ=Europe/Prague
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+WORKDIR /app
+
+# Copy backend package files
+COPY server/package*.json ./
+
+# Install backend dependencies
+RUN npm ci
+
+# Copy backend source code
+COPY server/ .
+
+# Final stage - combine frontend and backend
+FROM nginx:alpine
+
+# Set timezone to Prague
+ENV TZ=Europe/Prague
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Install Node.js for backend
+RUN apk add --no-cache nodejs npm
+
+# Copy built frontend from builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Copy backend from backend stage
+COPY --from=backend /app /backend
+
+# Copy nginx configuration
+COPY nginx.koyeb.conf /etc/nginx/nginx.conf
+
+# Create startup script
+RUN echo '#!/bin/sh' > /start.sh && \
+    echo 'cd /backend && node server.js &' >> /start.sh && \
+    echo 'nginx -g "daemon off;"' >> /start.sh && \
+    chmod +x /start.sh
+
+# Expose port 80
+EXPOSE 80
+
+CMD ["/start.sh"] 
