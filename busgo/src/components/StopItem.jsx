@@ -1,12 +1,17 @@
 import React from 'react';
 
-const StopItem = ({ stop, handleStopSelect }) => {
+const StopItem = React.forwardRef(({ stop, handleStopSelect, isSelected }, ref) => {
     const { name, zone, lines } = stop;
 
     return (
         <div
-            onClick={handleStopSelect}
-            className="w-full p-3 pr-4 cursor-pointer flex items-center gap-4 bg-transparent hover:bg-cyan-500/10 border-b border-gray-700/60 transition-colors duration-200"
+            ref={isSelected ? ref : null}
+            onClick={() => !isSelected && handleStopSelect()}
+            className={`w-full p-3 pr-4 flex items-center gap-4 border-b border-gray-700/60 transition-all duration-200 ${
+                isSelected 
+                    ? 'bg-cyan-500/20 border-l-4 border-l-cyan-400 cursor-default' 
+                    : 'bg-transparent hover:bg-cyan-500/10 cursor-pointer'
+            }`}
         >
             <div className="flex-grow min-w-0">
                 <h2 className="text-base font-semibold text-white truncate">
@@ -30,6 +35,6 @@ const StopItem = ({ stop, handleStopSelect }) => {
             </div>
         </div>
     );
-};
+});
 
 export default StopItem;

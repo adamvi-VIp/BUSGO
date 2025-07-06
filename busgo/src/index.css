@@ -66,7 +66,71 @@
   }
 
   .leaflet-tile-pane {
-    filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+    /* Using dark map tiles, no filter needed */
+  }
+
+  .custom-user-marker {
+    background: transparent !important;
+    border: none !important;
+  }
+
+  .custom-user-marker .animate-ping {
+    animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+
+  @keyframes ping {
+    75%, 100% {
+      transform: scale(2);
+      opacity: 0;
+    }
+  }
+
+  /* Hide Leaflet attribution completely */
+  .leaflet-control-attribution,
+  .leaflet-control-attribution a,
+  .leaflet-control-attribution.leaflet-control {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  /* Hide any attribution elements */
+  [class*="attribution"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+  }
+
+  /* Dark mode for any remaining Leaflet controls */
+  .leaflet-control {
+    background: rgba(30, 30, 30, 0.8) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: white !important;
+  }
+
+  .leaflet-control a {
+    color: white !important;
+    background: rgba(30, 30, 30, 0.8) !important;
+  }
+
+  .leaflet-control a:hover {
+    background: rgba(50, 50, 50, 0.9) !important;
+  }
+
+  /* Ice icon styling */
+  .ice-icon-ac {
+    filter: brightness(0) saturate(100%) invert(48%) sepia(79%) saturate(2476%) hue-rotate(190deg) brightness(118%) contrast(119%);
+  }
+
+  .ice-icon-no-ac {
+    filter: brightness(0) saturate(100%) invert(60%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(89%) contrast(86%);
+  }
+
+  /* Custom stop marker styling */
+  .custom-stop-marker {
+    background: transparent !important;
+    border: none !important;
   }
 
   .animate-fade-in {
@@ -82,5 +146,14 @@
   @keyframes slideUp {
     from { transform: translateY(30px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
+  }
+
+  @keyframes spin-reverse {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(-360deg); }
+  }
+
+  .animate-spin-reverse {
+    animation: spin-reverse 1s linear infinite;
   }
 }
