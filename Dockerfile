@@ -14,8 +14,8 @@ WORKDIR /app
 COPY busgo/package*.json ./
 COPY server/package*.json ./server/
 
-# Install frontend dependencies
-RUN npm ci --only=production --ignore-scripts
+# Install frontend dependencies (including dev dependencies for build)
+RUN npm ci --ignore-scripts
 
 # Install backend dependencies
 WORKDIR /app/server
