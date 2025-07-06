@@ -1,4 +1,4 @@
-# 🚌 HopGo - Real-time Bus Departures
+# 🚌 BusGo - Real-time Bus Departures
 
 A modern, real-time bus departure application for Prague, Czech Republic. Built with React, Node.js, and Socket.IO.
 
@@ -73,10 +73,10 @@ For automated build systems (like Railway, Render, etc.):
 
 ```bash
 # The main Dockerfile builds the frontend
-docker build -t hopgo-frontend .
+docker build -t busgo-frontend .
 
 # For backend-only deployment
-docker build -f Dockerfile.backend -t hopgo-backend .
+docker build -f Dockerfile.backend -t busgo-backend .
 ```
 
 ### Environment Variables for Build Systems:
@@ -199,37 +199,124 @@ docker-compose ps
 
 ## 🚌 Bus Data Features
 
-- **Real-time departures** with delays
-- **Platform information** for each stop
-- **Route numbers** and destinations
-- **Air conditioning** indicators
-- **Wheelchair accessibility** info
-- **Zone information**
+- **Real-time departures** with live updates
+- **Delay tracking** with color-coded indicators
+- **Air conditioning** status for each vehicle
+- **Wheelchair accessibility** information
+- **Route information** and direction
+- **Platform numbers** for easy identification
+- **Time-based filtering** and sorting
+- **Search functionality** across all stops
+- **Favorites system** for quick access
+- **Offline data** caching for reliability
 
-## 📈 Performance
+## 🔄 Real-time Updates
 
+- **WebSocket connections** for instant updates
+- **Automatic reconnection** on network issues
+- **Connection status** indicators
+- **Error handling** with user feedback
+- **Performance optimization** for smooth UX
+
+## 📍 Location Services
+
+- **GPS integration** for nearby stops
+- **Map-based navigation** with Leaflet
+- **Automatic location updates** as you move
+- **Manual location input** support
+- **Location permission** handling
+- **Fallback locations** for offline use
+
+## 🎯 User Experience
+
+- **Intuitive interface** with clear navigation
+- **Fast loading times** with optimized assets
+- **Smooth animations** and transitions
+- **Accessibility compliance** for all users
+- **Mobile-first design** for on-the-go use
+- **Dark theme** for reduced eye strain
+- **Responsive layout** for all devices
+
+## 🚀 Performance
+
+- **Optimized bundle** with Vite
 - **Code splitting** for faster loading
-- **Image optimization** and compression
-- **Efficient caching** strategies
-- **Minimal bundle size**
-- **Fast API responses**
+- **Lazy loading** of components
+- **Efficient state management** with React
+- **Minimal re-renders** for smooth UX
+- **Caching strategies** for API responses
+- **Compression** for faster downloads
 
-## 🔄 Updates
+## 🔧 Technical Stack
 
-The application automatically:
-- **Refreshes stops** when map is moved
-- **Updates departures** in real-time
-- **Handles connection** drops gracefully
-- **Caches data** for better performance
+### Frontend
+- **React 18** with modern hooks
+- **Vite** for fast development and building
+- **Tailwind CSS** for styling
+- **Leaflet** for interactive maps
+- **Socket.IO Client** for real-time updates
+- **Axios** for HTTP requests
 
-## 📞 Support
+### Backend
+- **Node.js** with Express
+- **Socket.IO** for real-time communication
+- **CORS** for cross-origin requests
+- **Environment variables** for configuration
+- **Error handling** and logging
 
-For issues or questions:
-1. Check the logs: `docker-compose logs -f`
-2. Verify API key in `.env` file
-3. Ensure Docker and Docker Compose are installed
-4. Check network connectivity
+### Infrastructure
+- **Docker** for containerization
+- **Nginx** for reverse proxy
+- **Docker Compose** for orchestration
+- **Health checks** and monitoring
+- **Automatic restarts** on failure
 
-## 📄 License
+## 📈 Monitoring and Logs
 
-This project is licensed under the MIT License. 
+- **Real-time logs** with Docker Compose
+- **Error tracking** and reporting
+- **Performance monitoring** for API calls
+- **Connection status** indicators
+- **User feedback** collection
+- **Analytics integration** ready
+
+## 🔄 Deployment Options
+
+### Docker Compose (Recommended)
+```bash
+docker-compose up --build -d
+```
+
+### Standalone Docker
+```bash
+# Frontend
+docker build -t busgo-frontend .
+docker run -p 80:80 busgo-frontend
+
+# Backend
+docker build -f Dockerfile.backend -t busgo-backend .
+docker run -p 3001:3001 busgo-backend
+```
+
+### Manual Deployment
+```bash
+# Frontend
+cd busgo
+npm install
+npm run build
+
+# Backend
+cd server
+npm install
+npm start
+```
+
+## 🎉 Getting Started
+
+1. **Clone the repository**
+2. **Set up environment variables**
+3. **Install dependencies**
+4. **Start development servers**
+5. **Access the application**
+
+The BusGo application is now ready to provide real-time bus departure information for Prague's public transportation system! 

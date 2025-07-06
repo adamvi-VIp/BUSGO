@@ -546,7 +546,7 @@ function App() {
             <header className="absolute top-0 left-0 w-full z-20 p-4 pointer-events-none">
                 <div className="max-w-xl w-full mx-auto flex flex-col items-center gap-3 pointer-events-auto">
                     <h1 className="m-0 font-bold text-3xl text-white tracking-tighter" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.7)' }}>
-                        HopGo
+                        BusGo
                     </h1>
                     <div className="relative w-full">
                         <input
