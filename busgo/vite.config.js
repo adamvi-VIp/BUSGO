@@ -5,6 +5,8 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: '0.0.0.0', // Listen on all interfaces for LAN access
+    port: 5173,      // Default Vite port, change if needed
     // This will proxy any requests starting with /socket.io
     // from the Vite dev server to your Express server on port 3001.
     proxy: {

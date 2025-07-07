@@ -28,7 +28,6 @@ function filterNextDeparturesOnly(departures) {
         return [];
     }
     
-    // Group departures by line number (route short_name)
     const departuresByLine = {};
     
     departures.forEach(departure => {
@@ -41,29 +40,25 @@ function filterNextDeparturesOnly(departures) {
         departuresByLine[lineNumber].push(departure);
     });
     
-    // For each line, keep only the next departure (earliest one)
     const nextDepartures = [];
     
     Object.keys(departuresByLine).forEach(lineNumber => {
         const lineDepartures = departuresByLine[lineNumber];
         
-        // Sort by departure time (earliest first)
         lineDepartures.sort((a, b) => {
-            const timeA = a.departure_timestamp || a.arrival?.departure_timestamp || 0;
-            const timeB = b.departure_timestamp || b.arrival?.departure_timestamp || 0;
+            const timeA = a.departure_timestamp?.predicted || a.departure_timestamp?.scheduled || 0;
+            const timeB = b.departure_timestamp?.predicted || b.departure_timestamp?.scheduled || 0;
             return timeA - timeB;
         });
         
-        // Take only the first (earliest) departure for this line
         if (lineDepartures.length > 0) {
             nextDepartures.push(lineDepartures[0]);
         }
     });
     
-    // Sort all next departures by departure time
     nextDepartures.sort((a, b) => {
-        const timeA = a.departure_timestamp || a.arrival?.departure_timestamp || 0;
-        const timeB = b.departure_timestamp || b.arrival?.departure_timestamp || 0;
+        const timeA = a.departure_timestamp?.predicted || a.departure_timestamp?.scheduled || 0;
+        const timeB = b.departure_timestamp?.predicted || b.departure_timestamp?.scheduled || 0;
         return timeA - timeB;
     });
     
@@ -72,38 +67,18 @@ function filterNextDeparturesOnly(departures) {
 
 async function fetchDeparturesFromPID(stopId) {
     const url = `https://api.golemio.cz/v2/pid/departureboards?ids[]=${stopId}&limit=30&minutesAfter=180`;
-            console.log(`[${stopId}] Fetching from URL: ${url}`);
-        console.log(`[${stopId}] API Key present: ${!!API_KEY}`);
-        console.log(`[${stopId}] API Key (first 10 chars): ${API_KEY ? API_KEY.substring(0, 10) + '...' : 'NOT SET'}`);
-        try {
-            const response = await axios.get(url, {
-                headers: { 
-                    'x-access-token': API_KEY,
-                    'Content-Type': 'application/json'
-                },
-                timeout: 5000
-            });
+    try {
+        const response = await axios.get(url, {
+            headers: { 
+                'x-access-token': API_KEY,
+                'Content-Type': 'application/json'
+            },
+            timeout: 5000
+        });
 
-        console.log(`[${stopId}] Full API response:`, JSON.stringify(response.data, null, 2));
-        
         if (response.data && Array.isArray(response.data.departures)) {
-            // Debug: Log the first departure to see the structure
-            if (response.data.departures.length > 0) {
-                console.log(`[${stopId}] Sample departure structure:`, JSON.stringify(response.data.departures[0], null, 2));
-            }
-            
-            // Filter to show only the next departure for each unique line number
             const filteredDepartures = filterNextDeparturesOnly(response.data.departures);
-            console.log(`[${stopId}] Filtered ${response.data.departures.length} departures to ${filteredDepartures.length} unique lines`);
-            
             return { ...response.data, departures: filteredDepartures };
-        } else if (response.data && response.data.data && Array.isArray(response.data.data.departures)) {
-            // Alternative response structure
-            console.log(`[${stopId}] Using alternative response structure`);
-            const filteredDepartures = filterNextDeparturesOnly(response.data.data.departures);
-            console.log(`[${stopId}] Filtered ${response.data.data.departures.length} departures to ${filteredDepartures.length} unique lines`);
-            
-            return { ...response.data.data, departures: filteredDepartures };
         } else {
             console.warn(`[${stopId}] Received invalid or empty data structure from PID API. Response:`, response.data);
             return { departures: [] };
@@ -111,7 +86,6 @@ async function fetchDeparturesFromPID(stopId) {
     } catch (error) {
         if (error.response) {
             console.error(`[${stopId}] PID API Error: ${error.response.status} ${error.response.statusText}`);
-            console.error(`[${stopId}] Error response:`, error.response.data);
         } else if (error.request) {
             console.error(`[${stopId}] PID API No Response:`, error.message);
         } else {
@@ -134,18 +108,13 @@ async function cacheStopsData() {
                 }))
             );
             
-            // **BUG FIX:** Filter out invalid stops and create a truly unique ID for each stop point.
             processedStopsCache = allStops
-                .filter(stop => stop.gtfsIds && stop.gtfsIds[0]) // Ensure a valid GTFS ID exists
+                .filter(stop => stop.gtfsIds && stop.gtfsIds[0])
                 .map((stop, index) => {
                     const gtfsId = stop.gtfsIds[0];
                     return {
-                        // A guaranteed unique ID for React keys - always use index to ensure uniqueness.
                         uniqueStopPointId: `${gtfsId}-${index}`, 
-                        
-                        // The actual ID for making API calls.
                         gtfsId: gtfsId, 
-                        
                         name: stop.groupName,
                         lat: stop.lat,
                         lon: stop.lon,
@@ -158,7 +127,7 @@ async function cacheStopsData() {
 
             console.log(`[CACHE] Successfully cached and processed ${processedStopsCache.length} stops.`);
         } else {
-            throw new Error("Invalid data structure received from stops URL. Expected an object with a 'stopGroups' array.");
+            throw new Error("Invalid data structure received from stops URL.");
         }
 
     } catch (error) {
@@ -167,7 +136,7 @@ async function cacheStopsData() {
 }
 
 // --- Real-time Polling Management ---
-const activeTimers = new Map(); // stopId -> { socketId, intervalId }
+const activeTimers = new Map();
 const lastKnownData = new Map();
 
 // --- Socket.IO Connection Handling ---
@@ -195,18 +164,26 @@ io.on('connection', (socket) => {
                 .slice(0, 50);
         }
         
-        socket.emit('stopsData', results);
+        // Check for the source flag from the client
+        if (params && params.source === 'map-movement') {
+            // If the request came from a map movement, echo the source back
+            // so the client knows to only update the map, not the bottom menu.
+            console.log(`[MAP-MOVE] Sending ${results.length} stops for map update to ${socket.id}.`);
+            socket.emit('stopsData', { stops: results, source: 'map-movement' });
+        } else {
+            // For initial load, search, or refresh, send the data normally.
+            console.log(`[STOPS] Sending ${results.length} stops for main list update to ${socket.id}.`);
+            socket.emit('stopsData', results);
+        }
     });
 
     socket.on('requestDepartures', async (stopId) => {
-        // **BUG FIX:** Add a guard to prevent requests with null/undefined IDs.
         if (!stopId) {
             return console.error(`[ERROR] Received request for departures with a NULL stopId from socket ${socket.id}`);
         }
         
         console.log(`[POLL] User ${socket.id} requested departures for stop [${stopId}]`);
         
-        // Clear existing timer for this stop if it exists
         if (activeTimers.has(stopId)) {
             const existingTimer = activeTimers.get(stopId);
             clearInterval(existingTimer.intervalId);
@@ -250,7 +227,6 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log(`[INFO] User disconnected: ${socket.id}`);
         
-        // Clean up any active timers for this socket
         for (const [stopId, timer] of activeTimers.entries()) {
             if (timer.socketId === socket.id) {
                 console.log(`[CLEANUP] Clearing timer for stop ${stopId} due to disconnect from socket ${socket.id}`);
@@ -264,7 +240,8 @@ io.on('connection', (socket) => {
 
 // --- Server Initialization ---
 const PORT = process.env.PORT || 3001;
-httpServer.listen(PORT, () => {
+const HOST = '0.0.0.0';
+httpServer.listen(PORT, HOST, () => {
     const border = '===================================================';
     const emptyLine = `|                                                 |`;
     const apiKeyStatus = API_KEY ? 'Loaded Successfully' : 'NOT FOUND - .env file missing or invalid?';
@@ -276,7 +253,7 @@ httpServer.listen(PORT, () => {
     console.log(border);
     console.log(`|                                                 |`);
     console.log(`|  > Status:          Running                     |`);
-    console.log(`|  > Listening on:    http://localhost:${PORT}      |`);
+    console.log(`|  > Listening on:    http://0.0.0.0:${PORT}      |`);
     console.log(`|  > PID API Key:     ${apiKeyStatus.padEnd(26)}|`);
     console.log(`|  > Polling Speed:   ${(POLLING_INTERVAL / 1000).toString().padEnd(2)} seconds                 |`);
     console.log(emptyLine);

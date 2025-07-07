@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import ConnectionStatus, { socket } from './components/ConnectionStatus';
+import { socket } from './components/ConnectionStatus';
 import MessagesSection from './components/MessagesSection';
 import ErrorsSection from './components/ErrorsSection';
 import Pagination from './components/Pagination';
@@ -23,7 +23,7 @@ function MapViewUpdater({ center, zoom, shouldUpdate }) {
         easeLinearity: 0.25
       });
     }
-  }, [shouldUpdate]); // Only depend on shouldUpdate, not center or zoom
+  }, [shouldUpdate, center, zoom, map]);
   return null;
 }
 
@@ -32,48 +32,39 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
         ? [userLocation.latitude, userLocation.longitude] 
         : [50.0755, 14.4378]; // Prague center fallback
 
-    // Use selected stop position if available, otherwise use user location
     const centerPosition = selectedStop && selectedStop.lat && selectedStop.lon
         ? [selectedStop.lat, selectedStop.lon]
         : mapPosition;
 
-    // Track when we should actually move the camera
     const [localShouldUpdateCamera, setLocalShouldUpdateCamera] = useState(false);
     
-    // Move camera when a stop is selected, refresh button is clicked, or user location is first set
     useEffect(() => {
         if (selectedStop) {
             console.log('[MAP] Stop selected, moving camera to:', selectedStop.name);
             setLocalShouldUpdateCamera(true);
-            // Reset after a short delay to prevent continuous updates
             setTimeout(() => setLocalShouldUpdateCamera(false), 100);
         }
     }, [selectedStop?.gtfsId]);
     
-    // Move camera when refresh button is clicked (isRefreshing becomes true)
     useEffect(() => {
         if (isRefreshing && userLocation) {
             console.log('[MAP] Refresh clicked, moving camera to user location');
             setLocalShouldUpdateCamera(true);
-            // Reset after a short delay to prevent continuous updates
             setTimeout(() => setLocalShouldUpdateCamera(false), 100);
         }
     }, [isRefreshing, userLocation]);
     
-    // Move camera when shouldUpdateCamera prop changes (from parent)
     useEffect(() => {
         if (shouldUpdateCamera && userLocation) {
             console.log('[MAP] Moving camera to user location on app start');
             setLocalShouldUpdateCamera(true);
-            // Reset after a short delay to prevent continuous updates
             setTimeout(() => setLocalShouldUpdateCamera(false), 100);
         }
     }, [shouldUpdateCamera, userLocation]);
 
-    // Only log when stops or selectedStop changes, not on every render
     useEffect(() => {
         console.log('AppMap rendering with position:', centerPosition, 'stops:', stops.length, 'userLocation:', userLocation, 'selectedStop:', selectedStop?.name);
-    }, [stops.length, selectedStop?.gtfsId, centerPosition]);
+    }, [stops.length, selectedStop?.gtfsId, userLocation, centerPosition]);
 
     return (
         <div className="absolute inset-0 z-0 h-full w-full">
@@ -85,7 +76,6 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
                 style={{ height: '100%', width: '100%' }}
                 attributionControl={false}
             >
-                {/* Only move camera when stop is selected, not when user moves map */}
                 <MapViewUpdater center={centerPosition} zoom={selectedStop ? 16 : 16} shouldUpdate={localShouldUpdateCamera} />
                 <MapLocationTracker socket={socket} />
                 <TileLayer
@@ -140,18 +130,13 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
 
 // --- Arrival Component (for the modal) ---
 const Arrival = ({ arrival }) => {
-    console.log('Arrival object:', JSON.stringify(arrival, null, 2));
     const { route, trip, departure_timestamp } = arrival;
     const [remainingTime, setRemainingTime] = useState(null);
 
     useEffect(() => {
-        // Access departure_timestamp directly from arrival object
         let departureTimestamp = departure_timestamp?.predicted || 
                                departure_timestamp?.scheduled;
         
-        console.log('Departure timestamp:', departureTimestamp);
-        console.log('Departure timestamp object:', departure_timestamp);
-
         if (!departureTimestamp) {
             setRemainingTime(null);
             return;
@@ -160,15 +145,12 @@ const Arrival = ({ arrival }) => {
         const calculateRemaining = () => {
             let arrivalTime;
             
-            // Handle different timestamp formats
             if (typeof departureTimestamp === 'string') {
-                // Try to parse as ISO string first
                 const parsed = new Date(departureTimestamp);
                 if (isNaN(parsed.getTime())) {
-                    // Try parsing as Unix timestamp (seconds)
                     const unixTimestamp = parseInt(departureTimestamp);
                     if (!isNaN(unixTimestamp)) {
-                        arrivalTime = unixTimestamp * 1000; // Convert to milliseconds
+                        arrivalTime = unixTimestamp * 1000;
                     } else {
                         console.error('Cannot parse timestamp string:', departureTimestamp);
                         setRemainingTime(null);
@@ -178,12 +160,9 @@ const Arrival = ({ arrival }) => {
                     arrivalTime = parsed.getTime();
                 }
             } else if (typeof departureTimestamp === 'number') {
-                // If it's already a timestamp in milliseconds
                 if (departureTimestamp < 1000000000000) {
-                    // Likely Unix timestamp in seconds, convert to milliseconds
                     arrivalTime = departureTimestamp * 1000;
                 } else {
-                    // Already in milliseconds
                     arrivalTime = departureTimestamp;
                 }
             } else {
@@ -193,7 +172,6 @@ const Arrival = ({ arrival }) => {
             }
             
             const now = Date.now();
-            console.log('Arrival time:', arrivalTime, 'Now:', now, 'Difference:', arrivalTime - now);
             setRemainingTime(Math.max(0, arrivalTime - now));
         };
         calculateRemaining();
@@ -218,38 +196,29 @@ const Arrival = ({ arrival }) => {
 
     const formatDelay = (delayInSeconds) => {
         if (delayInSeconds === null || delayInSeconds === undefined) {
-            return null; // Don't show for unknown delays
+            return null;
         }
         
         const minutes = Math.floor(Math.abs(delayInSeconds) / 60);
         const seconds = Math.abs(delayInSeconds) % 60;
         
         if (delayInSeconds > 0) {
-            if (minutes === 0) {
-                return `+${seconds}s`; // Just seconds for under a minute
-            } else {
-                return `+${minutes}:${seconds.toString().padStart(2, '0')}`;
-            }
+            return `+${minutes}:${seconds.toString().padStart(2, '0')}`;
         } else if (delayInSeconds < 0) {
-            if (minutes === 0) {
-                return `-${seconds}s`; // Just seconds for under a minute
-            } else {
-                return `-${minutes}:${seconds.toString().padStart(2, '0')}`;
-            }
+            return `-${minutes}:${seconds.toString().padStart(2, '0')}`;
         } else {
-            return `00:00`; // On time
+            return `00:00`;
         }
     };
 
     const delayString = formatDelay(arrival?.delay?.seconds);
     const isDeparting = remainingTime !== null && remainingTime <= 60000 && remainingTime > 0;
     
-    // Determine delay color based on delay value
     const getDelayColor = (delayInSeconds) => {
         if (delayInSeconds === null || delayInSeconds === undefined) return '';
-        if (delayInSeconds === 0) return 'text-green-400'; // On time - green
-        if (delayInSeconds > 0) return 'text-orange-400'; // Delayed - orange
-        if (delayInSeconds < 0) return 'text-blue-400'; // Early - blue
+        if (delayInSeconds === 0) return 'text-green-400';
+        if (delayInSeconds > 0) return 'text-orange-400';
+        if (delayInSeconds < 0) return 'text-blue-400';
         return '';
     };
     
@@ -286,7 +255,7 @@ const Arrival = ({ arrival }) => {
     );
 };
 
-// --- Modern Bubble Modal Component ---
+// --- Stop Modal Component ---
 const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) => {
     const { name, platform, zone, wheelchairAccess } = stop;
 
@@ -348,7 +317,11 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) =>
 
 // --- Main App Component ---
 function App() {
-    const [stops, setStops] = useState([]);
+    // State for stops in the bottom menu (from initial load or search)
+    const [bottomMenuStops, setBottomMenuStops] = useState([]);
+    // State for all stops to be displayed on the map
+    const [mapStops, setMapStops] = useState([]);
+
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
@@ -367,20 +340,39 @@ function App() {
     const menuScrollRef = useRef(null);
 
     useEffect(() => {
-        const handleStopsData = (data) => {
-            console.log('Received stops data:', data);
-            if (data && data.length > 0) {
-                console.log('Sample stop:', data[0]);
-                console.log('Sample uniqueStopPointId:', data[0].uniqueStopPointId);
+        /**
+         * Handles incoming stop data from the server.
+         * This function now differentiates between data for the main list (bottom menu)
+         * and data that should only be added to the map (from map movements).
+         * * This relies on the backend echoing a 'source' property in the response,
+         * which is set to 'map-movement' by the MapLocationTracker component.
+         */
+        const handleStopsData = (response) => {
+            // Defensively check if the response is an array (old behavior) 
+            // or an object with a 'source' property (new behavior).
+            const isObjectResponse = typeof response === 'object' && response !== null && !Array.isArray(response) && response.stops;
+            
+            const newStops = isObjectResponse ? response.stops : response;
+            const source = isObjectResponse ? response.source : null;
+
+            if (source === 'map-movement') {
+                console.log('Received stops from map movement:', newStops.length);
+                // Add new stops to existing map stops, avoiding duplicates.
+                setMapStops(prevMapStops => {
+                    const existingStopIds = new Set(prevMapStops.map(s => s.uniqueStopPointId));
+                    const uniqueNewStops = (newStops || []).filter(s => !existingStopIds.has(s.uniqueStopPointId));
+                    return [...prevMapStops, ...uniqueNewStops];
+                });
+            } else { // This handles initial load, search, and manual refresh.
+                console.log('Received stops for bottom menu:', newStops.length);
+                const stopsData = newStops || [];
+                setBottomMenuStops(stopsData);
+                setMapStops(stopsData); // Reset map stops to match the main list.
+                setIsLoading(false);
             }
-            setStops(data || []);
-            setIsLoading(false);
         };
+
         const handleDepartureData = (data) => {
-            console.log('Received departure data:', JSON.stringify(data, null, 2));
-            if (data.departures && data.departures.length > 0) {
-                console.log('Sample departure:', JSON.stringify(data.departures[0], null, 2));
-            }
             setRealTimeData(data);
             setIsLoadingRealTime(false);
         };
@@ -412,9 +404,7 @@ function App() {
             navigator.geolocation.getCurrentPosition(position => {
                 const { latitude, longitude } = position.coords;
                 setUserLocation({ latitude, longitude });
-                // Add timestamp to force fresh data
                 socket.emit('searchStops', { lat: latitude, lon: longitude, timestamp: Date.now() });
-                // Trigger camera movement to user location
                 setShouldUpdateCamera(true);
                 setTimeout(() => setShouldUpdateCamera(false), 100);
             }, () => {
@@ -440,16 +430,13 @@ function App() {
         if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
 
         debounceTimeout.current = setTimeout(() => {
+            setIsLoading(true);
             if (newSearchTerm.length > 0) {
-                 setIsLoading(true);
                  socket.emit('searchStops', { query: newSearchTerm, timestamp: Date.now() });
             } else {
-                // When search is cleared, refresh nearby stations
-                setIsLoading(true);
                 if (userLocation) {
                     socket.emit('searchStops', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
                 } else {
-                    // Fallback to default location if no user location
                     socket.emit('searchStops', { timestamp: Date.now() });
                 }
             }
@@ -461,20 +448,16 @@ function App() {
             socket.emit('stopDepartureMonitoring', selectedStop.gtfsId);
         }
         setSelectedStop(stop);
-        setIsPanelExpanded(false); // Collapse bottom menu when station is selected
+        setIsPanelExpanded(false);
         setIsLoadingRealTime(true);
         setRealTimeData(null);
         socket.emit('requestDepartures', stop.gtfsId);
         
-        // Scroll to selected station after a short delay to ensure DOM is updated
         setTimeout(() => {
             if (selectedStopRef.current && menuScrollRef.current) {
                 const container = menuScrollRef.current;
                 const element = selectedStopRef.current;
-                
-                // Calculate position to put selected station at the top of collapsed menu
                 const scrollTop = element.offsetTop - container.offsetTop;
-                
                 container.scrollTo({
                     top: scrollTop,
                     behavior: 'smooth'
@@ -495,9 +478,9 @@ function App() {
         setErrors(errors.filter((_, i) => i !== index));
     };
 
-    // Force refresh function
     const forceRefresh = () => {
-        setStops([]);
+        setBottomMenuStops([]);
+        setMapStops([]);
         setSearchTerm('');
         setIsPanelExpanded(false);
         setIsLoading(true);
@@ -519,22 +502,19 @@ function App() {
     const handleRefreshClick = () => {
         setIsRefreshing(true);
         forceRefresh();
-        // Stop spinning after a short delay
         setTimeout(() => setIsRefreshing(false), 1000);
     };
-
-
 
     const cardsPerPage = 50;
     const indexOfLastCard = currentPage * cardsPerPage;
     const indexOfFirstCard = indexOfLastCard - cardsPerPage;
-    const currentCards = stops.slice(indexOfFirstCard, indexOfLastCard);
-    const totalPages = Math.ceil(stops.length / cardsPerPage);
+    const currentCards = bottomMenuStops.slice(indexOfFirstCard, indexOfLastCard);
+    const totalPages = Math.ceil(bottomMenuStops.length / cardsPerPage);
 
     return (
         <div className="h-screen w-screen overflow-hidden bg-background-primary relative">
             <AppMap 
-                stops={stops} 
+                stops={mapStops} 
                 userLocation={userLocation} 
                 onStopSelect={handleStopSelect} 
                 selectedStop={selectedStop}
@@ -561,11 +541,10 @@ function App() {
                                 onClick={() => {
                                     setSearchTerm('');
                                     setIsPanelExpanded(false);
+                                    setIsLoading(true);
                                     if (userLocation) {
-                                        setIsLoading(true);
                                         socket.emit('searchStops', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
                                     } else {
-                                        setIsLoading(true);
                                         socket.emit('searchStops', { timestamp: Date.now() });
                                     }
                                 }}
