@@ -11,7 +11,7 @@ import MapLocationTracker from './components/MapLocationTracker';
 import locationIcon from './assets/location.svg';
 import refreshIcon from './assets/refresh.svg';
 import iceIcon from './assets/ice.svg';
-import stationBoxPng from './assets/stationbox.png';
+import stationBoxIcon from './assets/stationbox.png';
 
 // --- Map Components ---
 function MapViewUpdater({ center, zoom, shouldUpdate }) {
@@ -38,35 +38,29 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
         : mapPosition;
 
     const [localShouldUpdateCamera, setLocalShouldUpdateCamera] = useState(false);
-    const [bounds, setBounds] = useState(null);
+    const [visibleStops, setVisibleStops] = useState(stops);
     const mapRef = useRef();
 
-    // Debounced bounds update
+    useEffect(() => {
+        setVisibleStops(stops); // Reset visible stops when stops change
+    }, [stops]);
+
+    // Update visible stops based on map bounds
     useEffect(() => {
         const map = mapRef.current;
         if (!map) return;
-        let timeout;
-        const updateBounds = () => {
-            clearTimeout(timeout);
-            timeout = setTimeout(() => {
-                setBounds(map.getBounds());
-            }, 100); // 100ms debounce
+        const updateVisibleStops = () => {
+            const bounds = map.getBounds();
+            setVisibleStops(
+                stops.filter(stop =>
+                    stop.lat && stop.lon && bounds.contains([stop.lat, stop.lon])
+                )
+            );
         };
-        map.on('moveend', updateBounds);
-        updateBounds();
-        return () => {
-            map.off('moveend', updateBounds);
-            clearTimeout(timeout);
-        };
-    }, []);
-
-    // Memoize visible stops
-    const visibleStops = useMemo(() => {
-        if (!bounds) return stops;
-        return stops.filter(stop =>
-            stop.lat && stop.lon && bounds.contains([stop.lat, stop.lon])
-        );
-    }, [stops, bounds]);
+        map.on('moveend', updateVisibleStops);
+        updateVisibleStops();
+        return () => map.off('moveend', updateVisibleStops);
+    }, [stops]);
 
     useEffect(() => {
         if (selectedStop) {
@@ -96,9 +90,6 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
         console.log('AppMap rendering with position:', centerPosition, 'stops:', stops.length, 'userLocation:', userLocation, 'selectedStop:', selectedStop?.name);
     }, [stops.length, selectedStop?.gtfsId, userLocation, centerPosition]);
 
-    const MAX_MARKERS = 200;
-    const visibleStopsLimited = visibleStops.slice(0, MAX_MARKERS);
-
     return (
         <div className="absolute inset-0 z-0 h-full w-full">
             <MapContainer 
@@ -116,19 +107,17 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
                     attribution=""
                     url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
                 />
-                {visibleStopsLimited.map(stop => (
+                {visibleStops.map(stop => (
                     (stop.lat && stop.lon) && (
                         <Marker 
                             key={stop.uniqueStopPointId} 
                             position={[stop.lat, stop.lon]}
                             icon={L.divIcon({
-                                className: `custom-stop-marker`,
+                                className: `custom-stop-marker ${selectedStop && selectedStop.gtfsId === stop.gtfsId ? 'opacity-50' : ''}`,
                                 html: `
-                                    <div style="position: relative; width: 32px; height: 32px;">
-                                        <img src='${stationBoxPng}' alt='Stop' style="width: 32px; height: 32px; display: block; ${selectedStop && selectedStop.gtfsId === stop.gtfsId ? 'opacity:0.5;' : ''}" />
-                                        <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; color: white; text-shadow: 0 1px 2px #000; pointer-events: none;">
-                                            ${stop.platform || 'P'}
-                                        </div>
+                                    <div style="position: relative; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
+                                        <img src='${stationBoxIcon}' alt='Station' style="width: 32px; height: 32px; display: block; opacity: 1;" />
+                                        <span style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; color: white; text-shadow: 0 1px 4px rgba(0,0,0,0.7); pointer-events: none;">${stop.platform || 'P'}</span>
                                     </div>
                                 `,
                                 iconSize: [32, 32],
@@ -548,8 +537,18 @@ function App() {
     const currentCards = bottomMenuStops.slice(indexOfFirstCard, indexOfLastCard);
     const totalPages = Math.ceil(bottomMenuStops.length / cardsPerPage);
 
+    // Mobile 100vh fix
+    useEffect(() => {
+        function setVh() {
+            document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
+        }
+        setVh();
+        window.addEventListener('resize', setVh);
+        return () => window.removeEventListener('resize', setVh);
+    }, []);
+
     return (
-        <div className="h-screen w-screen overflow-hidden bg-background-primary relative">
+        <div className="h-screen-fix w-screen overflow-hidden bg-background-primary relative">
             <AppMap 
                 stops={mapStops} 
                 userLocation={userLocation} 

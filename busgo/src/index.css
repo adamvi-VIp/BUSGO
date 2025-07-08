@@ -156,4 +156,8 @@
   .animate-spin-reverse {
     animation: spin-reverse 1s linear infinite;
   }
+
+  .h-screen-fix {
+    height: calc(var(--vh, 1vh) * 100);
+  }
 }
