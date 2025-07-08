@@ -29,8 +29,8 @@ function MapViewUpdater({ center, zoom, shouldUpdate }) {
 }
 
 const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, socket, isRefreshing, shouldUpdateCamera }) => {
-    const mapPosition = userLocation 
-        ? [userLocation.latitude, userLocation.longitude] 
+    const mapPosition = userLocation
+        ? [userLocation.latitude, userLocation.longitude]
         : [50.0755, 14.4378]; // Prague center fallback
 
     const centerPosition = selectedStop && selectedStop.lat && selectedStop.lon
@@ -92,9 +92,9 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
 
     return (
         <div className="absolute inset-0 z-0 h-full w-full">
-            <MapContainer 
-                center={centerPosition} 
-                zoom={selectedStop ? 16 : 16} 
+            <MapContainer
+                center={centerPosition}
+                zoom={selectedStop ? 16 : 16}
                 scrollWheelZoom={true}
                 zoomControl={false}
                 style={{ height: '100%', width: '100%' }}
@@ -109,8 +109,8 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
                 />
                 {visibleStops.map(stop => (
                     (stop.lat && stop.lon) && (
-                        <Marker 
-                            key={stop.uniqueStopPointId} 
+                        <Marker
+                            key={stop.uniqueStopPointId}
                             position={[stop.lat, stop.lon]}
                             icon={L.divIcon({
                                 className: `custom-stop-marker ${selectedStop && selectedStop.gtfsId === stop.gtfsId ? 'opacity-50' : ''}`,
@@ -134,7 +134,7 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
                     )
                 ))}
                 {userLocation && (
-                    <Marker 
+                    <Marker
                         position={[userLocation.latitude, userLocation.longitude]}
                         icon={L.divIcon({
                             className: 'custom-user-marker',
@@ -160,7 +160,7 @@ const Arrival = ({ arrival }) => {
     const [remainingTime, setRemainingTime] = useState(null);
 
     useEffect(() => {
-        let departureTimestamp = departure_timestamp?.predicted || 
+        let departureTimestamp = departure_timestamp?.predicted ||
                                departure_timestamp?.scheduled;
         
         if (!departureTimestamp) {
@@ -262,9 +262,9 @@ const Arrival = ({ arrival }) => {
                         {delayString && (
                             <div className="text-xs text-gray-400 flex items-center gap-2 mt-1">
                                 <span className={`font-semibold ${delayColor}`}>{delayString}</span>
-                                <img 
-                                    src={iceIcon} 
-                                    alt="Air Conditioning" 
+                                <img
+                                    src={iceIcon}
+                                    alt="Air Conditioning"
                                     className={`w-4 h-4 ${trip.is_air_conditioned ? 'ice-icon-ac' : 'ice-icon-no-ac'}`}
                                 />
                             </div>
@@ -359,6 +359,7 @@ function App() {
     const [userLocation, setUserLocation] = useState(null);
     const [isPanelExpanded, setIsPanelExpanded] = useState(false);
     const [shouldUpdateCamera, setShouldUpdateCamera] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     const debounceTimeout = useRef(null);
     const hasFetchedForLocation = useRef(false);
@@ -374,7 +375,7 @@ function App() {
          * which is set to 'map-movement' by the MapLocationTracker component.
          */
         const handleStopsData = (response) => {
-            // Defensively check if the response is an array (old behavior) 
+            // Defensively check if the response is an array (old behavior)
             // or an object with a 'source' property (new behavior).
             const isObjectResponse = typeof response === 'object' && response !== null && !Array.isArray(response) && response.stops;
             
@@ -391,7 +392,11 @@ function App() {
                 });
             } else { // This handles initial load, search, and manual refresh.
                 console.log('Received stops for bottom menu:', newStops.length);
-                const stopsData = newStops || [];
+                let stopsData = newStops || [];
+                // Sort stops by distance on the frontend
+                if (Array.isArray(stopsData)) {
+                    stopsData = stopsData.sort((a, b) => a.distance - b.distance);
+                }
                 setBottomMenuStops(stopsData);
                 setMapStops(stopsData); // Reset map stops to match the main list.
                 setIsLoading(false);
@@ -510,7 +515,7 @@ function App() {
         setSearchTerm('');
         setIsPanelExpanded(false);
         setIsLoading(true);
-        hasFetchedForLocation.current = false;
+        hasFetchedForLocation.current = false; // Reset to allow re-fetching on next load
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(position => {
                 const { latitude, longitude } = position.coords;
@@ -522,8 +527,6 @@ function App() {
             });
         }
     };
-
-    const [isRefreshing, setIsRefreshing] = useState(false);
 
     const handleRefreshClick = () => {
         setIsRefreshing(true);
@@ -549,10 +552,10 @@ function App() {
 
     return (
         <div className="h-screen-fix w-screen overflow-hidden bg-background-primary relative">
-            <AppMap 
-                stops={mapStops} 
-                userLocation={userLocation} 
-                onStopSelect={handleStopSelect} 
+            <AppMap
+                stops={mapStops}
+                userLocation={userLocation}
+                onStopSelect={handleStopSelect}
                 selectedStop={selectedStop}
                 socket={socket}
                 isRefreshing={isRefreshing}
@@ -610,13 +613,13 @@ function App() {
                                     <img src={locationIcon} alt="Location" className="w-5 h-5 opacity-60 m-1" />
                                 </div>
                             )}
-                            <button 
+                            <button
                                 onClick={handleRefreshClick}
                                 className="absolute right-0 top-0 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 active:from-blue-500/30 active:to-cyan-500/30 px-3 py-1 rounded-full border border-blue-400/30 transition-all duration-200 hover:scale-105 shadow-sm backdrop-blur-sm flex items-center justify-center"
                             >
-                                <img 
-                                    src={refreshIcon} 
-                                    alt="Refresh" 
+                                <img
+                                    src={refreshIcon}
+                                    alt="Refresh"
                                     className={`w-5 h-5 transition-transform duration-200 ${isRefreshing ? 'animate-spin-reverse' : ''}`}
                                 />
                             </button>

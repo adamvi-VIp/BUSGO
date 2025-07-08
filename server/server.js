@@ -21,6 +21,26 @@ const POLLING_INTERVAL = 10000; // 10 seconds
 
 let processedStopsCache = [];
 
+// --- Helper Functions ---
+
+function deg2rad(deg) {
+  return deg * (Math.PI/180)
+}
+
+function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+    var R = 6371; // Radius of the earth in km
+    var dLat = deg2rad(lat2-lat1);
+    var dLon = deg2rad(lon2-lon1);
+    var a =
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+        Math.sin(dLon/2) * Math.sin(dLon/2)
+    ;
+    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    var d = R * c; // Distance in km
+    return d;
+}
+
 // --- API Fetching Logic ---
 
 function filterNextDeparturesOnly(departures) {
@@ -69,7 +89,7 @@ async function fetchDeparturesFromPID(stopId) {
     const url = `https://api.golemio.cz/v2/pid/departureboards?ids[]=${stopId}&limit=30&minutesAfter=180`;
     try {
         const response = await axios.get(url, {
-            headers: { 
+            headers: {
                 'x-access-token': API_KEY,
                 'Content-Type': 'application/json'
             },
@@ -101,7 +121,7 @@ async function cacheStopsData() {
         const response = await axios.get(STOPS_JSON_URL);
         
         if (response.data && Array.isArray(response.data.stopGroups)) {
-            const allStops = response.data.stopGroups.flatMap(group => 
+            const allStops = response.data.stopGroups.flatMap(group =>
                 group.stops.map(stop => ({
                     ...stop,
                     groupName: group.name,
@@ -113,8 +133,8 @@ async function cacheStopsData() {
                 .map((stop, index) => {
                     const gtfsId = stop.gtfsIds[0];
                     return {
-                        uniqueStopPointId: `${gtfsId}-${index}`, 
-                        gtfsId: gtfsId, 
+                        uniqueStopPointId: `${gtfsId}-${index}`,
+                        gtfsId: gtfsId,
                         name: stop.groupName,
                         lat: stop.lat,
                         lon: stop.lon,
@@ -151,27 +171,33 @@ io.on('connection', (socket) => {
         let results = [];
         if (params && params.query) {
             const query = params.query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            results = processedStopsCache.filter(stop => 
+            results = processedStopsCache.filter(stop =>
                 stop.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(query)
             ).slice(0, 100);
         } else if (params && params.lat && params.lon) {
-            results = processedStopsCache
+            const isMapMovement = params.source === 'map-movement';
+            
+            let nearbyStops = processedStopsCache
                 .map(stop => ({
                     ...stop,
-                    distance: Math.sqrt(Math.pow(stop.lat - params.lat, 2) + Math.pow(stop.lon - params.lon, 2))
+                    distance: getDistanceFromLatLonInKm(params.lat, params.lon, stop.lat, stop.lon)
                 }))
-                .sort((a, b) => a.distance - b.distance)
-                .slice(0, 50);
+                .filter(stop => stop.distance <= 3);
+
+            if (isMapMovement) {
+                // For map movements, send all stops within the radius, no 50-item limit.
+                results = nearbyStops;
+            } else {
+                // For initial load and manual refresh, apply the 50-item limit.
+                // The frontend will handle sorting.
+                results = nearbyStops.slice(0, 50);
+            }
         }
         
-        // Check for the source flag from the client
         if (params && params.source === 'map-movement') {
-            // If the request came from a map movement, echo the source back
-            // so the client knows to only update the map, not the bottom menu.
             console.log(`[MAP-MOVE] Sending ${results.length} stops for map update to ${socket.id}.`);
             socket.emit('stopsData', { stops: results, source: 'map-movement' });
         } else {
-            // For initial load, search, or refresh, send the data normally.
             console.log(`[STOPS] Sending ${results.length} stops for main list update to ${socket.id}.`);
             socket.emit('stopsData', results);
         }
