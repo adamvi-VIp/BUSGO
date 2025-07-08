@@ -28,12 +28,12 @@ const Pagination = ({ currentPage, totalPages, handlePageChange }) => {
     }
 
     return (
-        <nav className="flex justify-center items-center my-10 p-5">
-            <ul className="flex list-none m-0 p-0 gap-2 items-center glass-effect backdrop-blur-20 border border-gray-600 rounded-2xl p-2 shadow-lg">
+        <nav className="flex justify-center items-center my-6 p-2 sm:my-10 sm:p-5">
+            <ul className="flex list-none m-0 p-0 gap-1 sm:gap-2 items-center glass-effect backdrop-blur-20 border border-gray-600 rounded-2xl p-1 sm:p-2 shadow-lg">
                 <li className="m-0">
                     <button 
                         onClick={() => handlePageChange(currentPage - 1)} 
-                        className={`glass-effect-dark border border-gray-600 rounded-xl text-gray-300 py-2.5 px-3.5 text-sm font-medium cursor-pointer transition-all duration-300 ease-in-out min-w-10 flex items-center justify-center leading-none hover:glass-effect hover:border-gray-500 hover:text-white hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 ${currentPage === 1 ? 'opacity-40 cursor-not-allowed glass-effect-dark/30 border-gray-700' : ''}`}
+                        className={`glass-effect-dark border border-gray-600 rounded-xl text-gray-300 py-1.5 px-2.5 text-xs sm:py-2.5 sm:px-3.5 sm:text-sm font-medium cursor-pointer transition-all duration-300 ease-in-out min-w-8 sm:min-w-10 flex items-center justify-center leading-none hover:glass-effect hover:border-gray-500 hover:text-white hover:shadow-md ${currentPage === 1 ? 'opacity-40 cursor-not-allowed glass-effect-dark/30 border-gray-700' : ''}`}
                         disabled={currentPage === 1}
                     >
                         &laquo;
@@ -43,31 +43,31 @@ const Pagination = ({ currentPage, totalPages, handlePageChange }) => {
                     <li className="m-0">
                         <button 
                             onClick={() => handlePageChange(1)} 
-                            className="glass-effect-dark border border-gray-600 rounded-xl text-gray-300 py-2.5 px-3.5 text-sm font-medium cursor-pointer transition-all duration-300 ease-in-out min-w-10 flex items-center justify-center leading-none hover:glass-effect hover:border-gray-500 hover:text-white hover:-translate-y-0.5 hover:shadow-md active:translate-y-0"
+                            className="glass-effect-dark border border-gray-600 rounded-xl text-gray-300 py-1.5 px-2.5 text-xs sm:py-2.5 sm:px-3.5 sm:text-sm font-medium cursor-pointer transition-all duration-300 ease-in-out min-w-8 sm:min-w-10 flex items-center justify-center leading-none hover:glass-effect hover:border-gray-500 hover:text-white hover:shadow-md"
                         >
                             1
                         </button>
                     </li>
                 )}
-                {startPage > 2 && <li className="text-gray-500 py-2.5 px-2 font-medium select-none">...</li>}
+                {startPage > 2 && <li className="text-gray-500 py-1.5 px-1 sm:py-2.5 sm:px-2 font-medium select-none">...</li>}
 
                 {pageNumbers.map(number => (
                     <li key={number} className="m-0">
                         <button 
                             onClick={() => handlePageChange(number)} 
-                            className={`py-2.5 px-3.5 text-sm font-medium cursor-pointer transition-all duration-300 ease-in-out min-w-10 flex items-center justify-center leading-none ${currentPage === number ? 'bg-gradient-to-r from-blue-500 to-blue-600 border-blue-500/50 text-white shadow-lg font-semibold' : 'glass-effect-dark border border-gray-600 rounded-xl text-gray-300 hover:glass-effect hover:border-gray-500 hover:text-white hover:-translate-y-0.5 hover:shadow-md active:translate-y-0'}`}
+                            className={`py-1.5 px-2.5 text-xs sm:py-2.5 sm:px-3.5 sm:text-sm font-medium cursor-pointer transition-all duration-300 ease-in-out min-w-8 sm:min-w-10 flex items-center justify-center leading-none ${currentPage === number ? 'bg-gradient-to-r from-blue-500 to-blue-600 border-blue-500/50 text-white shadow-lg font-semibold rounded-xl' : 'glass-effect-dark border border-gray-600 rounded-xl text-gray-300 hover:glass-effect hover:border-gray-500 hover:text-white hover:shadow-md'}`}
                         >
                             {number}
                         </button>
                     </li>
                 ))}
                 
-                {endPage < totalPages -1 && <li className="text-gray-500 py-2.5 px-2 font-medium select-none">...</li>}
+                {endPage < totalPages -1 && <li className="text-gray-500 py-1.5 px-1 sm:py-2.5 sm:px-2 font-medium select-none">...</li>}
                 {endPage < totalPages && (
                      <li className="m-0">
                         <button 
                             onClick={() => handlePageChange(totalPages)} 
-                            className="glass-effect-dark border border-gray-600 rounded-xl text-gray-300 py-2.5 px-3.5 text-sm font-medium cursor-pointer transition-all duration-300 ease-in-out min-w-10 flex items-center justify-center leading-none hover:glass-effect hover:border-gray-500 hover:text-white hover:-translate-y-0.5 hover:shadow-md active:translate-y-0"
+                            className="glass-effect-dark border border-gray-600 rounded-xl text-gray-300 py-1.5 px-2.5 text-xs sm:py-2.5 sm:px-3.5 sm:text-sm font-medium cursor-pointer transition-all duration-300 ease-in-out min-w-8 sm:min-w-10 flex items-center justify-center leading-none hover:glass-effect hover:border-gray-500 hover:text-white hover:shadow-md"
                         >
                             {totalPages}
                         </button>
@@ -77,7 +77,7 @@ const Pagination = ({ currentPage, totalPages, handlePageChange }) => {
                 <li className="m-0">
                     <button 
                         onClick={() => handlePageChange(currentPage + 1)} 
-                        className={`glass-effect-dark border border-gray-600 rounded-xl text-gray-300 py-2.5 px-3.5 text-sm font-medium cursor-pointer transition-all duration-300 ease-in-out min-w-10 flex items-center justify-center leading-none hover:glass-effect hover:border-gray-500 hover:text-white hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 ${currentPage === totalPages ? 'opacity-40 cursor-not-allowed glass-effect-dark/30 border-gray-700' : ''}`}
+                        className={`glass-effect-dark border border-gray-600 rounded-xl text-gray-300 py-1.5 px-2.5 text-xs sm:py-2.5 sm:px-3.5 sm:text-sm font-medium cursor-pointer transition-all duration-300 ease-in-out min-w-8 sm:min-w-10 flex items-center justify-center leading-none hover:glass-effect hover:border-gray-500 hover:text-white hover:shadow-md ${currentPage === totalPages ? 'opacity-40 cursor-not-allowed glass-effect-dark/30 border-gray-700' : ''}`}
                         disabled={currentPage === totalPages}
                     >
                         &raquo;

@@ -188,9 +188,8 @@ io.on('connection', (socket) => {
                 // For map movements, send all stops within the radius, no 50-item limit.
                 results = nearbyStops;
             } else {
-                // For initial load and manual refresh, apply the 50-item limit.
-                // The frontend will handle sorting.
-                results = nearbyStops.slice(0, 50);
+                // For initial load and manual refresh, send all stops within the radius (no limit).
+                results = nearbyStops;
             }
         }
         
