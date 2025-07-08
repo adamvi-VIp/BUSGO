@@ -314,6 +314,13 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) =>
 
     const hasDepartures = realTimeData && realTimeData.departures && realTimeData.departures.length > 0;
 
+    // In StopModal, add a state and effect to force a re-render every second so the departures list is always up to date
+    const [now, setNow] = React.useState(Date.now());
+    React.useEffect(() => {
+        const interval = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(interval);
+    }, []);
+
     return (
         <>
             <div className="fixed top-2 left-1/2 transform -translate-x-1/2 z-[60] w-full max-w-3xl mx-auto px-2 sm:px-4" style={{ pointerEvents: 'auto' }}>
@@ -352,9 +359,51 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) =>
                         {error && <div className="text-center text-red-400 p-4 bg-red-500/10 rounded-xl text-sm">{error.error}</div>}
                         {realTimeData && (
                             hasDepartures ? (
-                                realTimeData.departures.map((arrival, index) => (
-                                    <Arrival key={arrival.trip.id || index} arrival={arrival} />
-                                ))
+                                // Group by line and only show the next future departure for each line
+                                Object.values(
+                                    realTimeData.departures
+                                        .filter(arrival => {
+                                            // Calculate remaining time for each arrival
+                                            const departureTimestamp = arrival.departure_timestamp?.predicted || arrival.departure_timestamp?.scheduled;
+                                            let arrivalTime;
+                                            if (typeof departureTimestamp === 'string') {
+                                                const parsed = new Date(departureTimestamp);
+                                                if (!isNaN(parsed.getTime())) {
+                                                    arrivalTime = parsed.getTime();
+                                                } else {
+                                                    const unixTimestamp = parseInt(departureTimestamp);
+                                                    if (!isNaN(unixTimestamp)) {
+                                                        arrivalTime = unixTimestamp * 1000;
+                                                    } else {
+                                                        return false;
+                                                    }
+                                                }
+                                            } else if (typeof departureTimestamp === 'number') {
+                                                if (departureTimestamp < 1000000000000) {
+                                                    arrivalTime = departureTimestamp * 1000;
+                                                } else {
+                                                    arrivalTime = departureTimestamp;
+                                                }
+                                            } else {
+                                                return false;
+                                            }
+                                            return arrivalTime - now > 0;
+                                        })
+                                        .reduce((acc, arrival) => {
+                                            const line = arrival.route?.short_name || 'Unknown';
+                                            if (!acc[line]) {
+                                                acc[line] = arrival;
+                                            } else {
+                                                // Only keep the soonest
+                                                const aTime = new Date(acc[line].departure_timestamp?.predicted || acc[line].departure_timestamp?.scheduled).getTime();
+                                                const bTime = new Date(arrival.departure_timestamp?.predicted || arrival.departure_timestamp?.scheduled).getTime();
+                                                if (bTime < aTime) acc[line] = arrival;
+                                            }
+                                            return acc;
+                                        }, {}))
+                                    .map((arrival, index) => (
+                                        <Arrival key={arrival.trip.id || index} arrival={arrival} />
+                                    ))
                             ) : (
                                 <p className="text-center text-gray-500 p-6 text-sm">No departures scheduled.</p>
                             )

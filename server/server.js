@@ -71,9 +71,8 @@ function filterNextDeparturesOnly(departures) {
             return timeA - timeB;
         });
         
-        if (lineDepartures.length > 0) {
-            nextDepartures.push(lineDepartures[0]);
-        }
+        // Push the next 3 departures for this line
+        nextDepartures.push(...lineDepartures.slice(0, 3));
     });
     
     nextDepartures.sort((a, b) => {
