@@ -191,6 +191,18 @@ io.on('connection', (socket) => {
                 // For initial load and manual refresh, send all stops within the radius (no limit).
                 results = nearbyStops;
             }
+        } else {
+            // No query or coordinates: use default location (Prague center)
+            const DEFAULT_LAT = 50.0874654;
+            const DEFAULT_LON = 14.4212535;
+            let nearbyStops = processedStopsCache
+                .map(stop => ({
+                    ...stop,
+                    distance: getDistanceFromLatLonInKm(DEFAULT_LAT, DEFAULT_LON, stop.lat, stop.lon)
+                }))
+                .filter(stop => stop.distance <= 3);
+            results = nearbyStops;
+            console.log(`[DEFAULT] Using Prague center. Found ${results.length} stops within 3km for ${socket.id}.`);
         }
         
         if (params && params.source === 'map-movement') {
@@ -250,8 +262,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        console.log(`[INFO] User disconnected: ${socket.id}`);
-        
+        console.log(`[INFO] User disconnected: ${socket.id}. Will stop sending data to this user. Total users now: ${io.engine.clientsCount}`);
         for (const [stopId, timer] of activeTimers.entries()) {
             if (timer.socketId === socket.id) {
                 console.log(`[CLEANUP] Clearing timer for stop ${stopId} due to disconnect from socket ${socket.id}`);
@@ -261,6 +272,16 @@ io.on('connection', (socket) => {
             }
         }
     });
+});
+
+// Optionally, handle ws proxy socket error globally
+process.on('uncaughtException', (err) => {
+    if (err.message && err.message.includes('ECONNRESET')) {
+        console.log('[INFO] User disconnected (ECONNRESET). Will stop sending data to this user.');
+        console.log(`[INFO] Total users now: ${io.engine.clientsCount}`);
+    } else {
+        console.error(err);
+    }
 });
 
 // --- Server Initialization ---

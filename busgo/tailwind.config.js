@@ -32,6 +32,7 @@ export default {
       },
       fontFamily: {
         'inter': ['Inter', 'sans-serif'],
+        onest: ['Onest', 'Inter', 'sans-serif'],
       },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-in-out',

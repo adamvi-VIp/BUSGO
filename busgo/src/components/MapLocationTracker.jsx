@@ -1,66 +1,86 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useMap } from 'react-leaflet';
 
 /**
- * A component that tracks map movements and requests new stop data for the visible area.
- * It debounces requests to avoid flooding the server while the user is panning the map.
+ * A component that shows a button to update stations after the user moves the map.
+ * Only fetches stations when the button is clicked.
  * @param {object} props - Component props.
  * @param {object} props.socket - The Socket.IO client instance.
+ * @param {object} props.programmaticMoveRef - Ref to distinguish programmatic moves.
  */
-const MapLocationTracker = ({ socket }) => {
+const MapLocationTracker = ({ socket, programmaticMoveRef }) => {
     const map = useMap();
-    const timeoutRef = useRef(null);
     const lastCenterRef = useRef(null);
+    const userInteractingRef = useRef(false);
+    const [showUpdateButton, setShowUpdateButton] = useState(false);
+    const [pendingCenter, setPendingCenter] = useState(null);
 
     useEffect(() => {
+        const handleMoveStart = () => {
+            userInteractingRef.current = true;
+        };
+
         const handleMapMove = () => {
+            // If this was a programmatic move, skip and reset flag
+            if (programmaticMoveRef && programmaticMoveRef.current) {
+                programmaticMoveRef.current = false;
+                userInteractingRef.current = false;
+                setShowUpdateButton(false);
+                return;
+            }
+            if (!userInteractingRef.current) return;
             const center = map.getCenter();
             const currentCenter = [center.lat, center.lng];
-            
-            // Check if center has actually changed significantly to avoid redundant fetches
-            if (!lastCenterRef.current || 
-                Math.abs(lastCenterRef.current[0] - currentCenter[0]) > 0.002 || 
+            // Only show button if center changed significantly
+            if (!lastCenterRef.current ||
+                Math.abs(lastCenterRef.current[0] - currentCenter[0]) > 0.002 ||
                 Math.abs(lastCenterRef.current[1] - currentCenter[1]) > 0.002) {
-                
-                // Clear any existing timeout to reset the debounce timer
-                if (timeoutRef.current) {
-                    clearTimeout(timeoutRef.current);
-                }
-                
-                // Set a new timeout to fetch stops after 0.5 seconds of map idle time
-                timeoutRef.current = setTimeout(() => {
-                    console.log('[MAP] Map idle. Fetching stops for new location:', currentCenter);
-                    
-                    // Emit an event to the server to get stops for the new map center.
-                    // The 'source' property is crucial for the server to echo back,
-                    // allowing the client to distinguish this data from initial/search data.
-                    socket.emit('searchStops', { 
-                        lat: currentCenter[0], 
-                        lon: currentCenter[1], 
-                        timestamp: Date.now(),
-                        source: 'map-movement' // This flag identifies the request source
-                    });
-                }, 500); // 500ms debounce delay
-                
-                // Update the last known center
-                lastCenterRef.current = currentCenter;
+                setPendingCenter(currentCenter);
+                setShowUpdateButton(true);
             }
+            userInteractingRef.current = false;
         };
 
-        // Listen to the 'moveend' event, which fires after the map has finished moving
+        map.on('movestart', handleMoveStart);
         map.on('moveend', handleMapMove);
 
-        // Cleanup function to remove the event listener and clear any pending timeouts
         return () => {
+            map.off('movestart', handleMoveStart);
             map.off('moveend', handleMapMove);
-            if (timeoutRef.current) {
-                clearTimeout(timeoutRef.current);
-            }
         };
-    }, [map, socket]);
+    }, [map, programmaticMoveRef]);
 
-    // This component does not render anything to the DOM
-    return null;
+    const handleUpdateStations = () => {
+        if (pendingCenter) {
+            lastCenterRef.current = pendingCenter;
+            socket.emit('searchStops', {
+                lat: pendingCenter[0],
+                lon: pendingCenter[1],
+                timestamp: Date.now(),
+                source: 'map-movement'
+            });
+            setShowUpdateButton(false);
+        }
+    };
+
+    // Floating button at bottom center, above the bottom menu
+    return showUpdateButton ? (
+        <div style={{
+            position: 'absolute',
+            left: '50%',
+            bottom: '235px', // Place above the bottom menu
+            transform: 'translateX(-50%)',
+            zIndex: 1000,
+            pointerEvents: 'auto',
+        }}>
+            <button
+                onClick={handleUpdateStations}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-full shadow-lg border border-blue-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            >
+                Search stations for this area
+            </button>
+        </div>
+    ) : null;
 };
 
 export default MapLocationTracker;

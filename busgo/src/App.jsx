@@ -12,23 +12,36 @@ import locationIcon from './assets/location.svg';
 import refreshIcon from './assets/refresh.svg';
 import iceIcon from './assets/ice.svg';
 import stationBoxIcon from './assets/stationbox.png';
+import SplashScreen from './components/SplashScreen';
 
 // --- Map Components ---
-function MapViewUpdater({ center, zoom, shouldUpdate }) {
+function MapViewUpdater({ center, zoom, shouldUpdate, programmaticMoveRef, setMapReady }) {
   const map = useMap();
+
+  useEffect(() => {
+    // On initial mount, invalidate the map's size to ensure it's rendered correctly.
+    // This is a fix for a race condition on mobile devices where the map
+    // may initialize before the viewport height is correctly calculated.
+    if (map) {
+      map.invalidateSize();
+      if (setMapReady) setMapReady(true);
+    }
+  }, [map, setMapReady]);
+
   useEffect(() => {
     if (center && shouldUpdate) {
+      if (programmaticMoveRef) programmaticMoveRef.current = true;
       console.log('[MAP] Moving camera to:', center);
       map.flyTo(center, zoom, {
         duration: 1,
         easeLinearity: 0.25
       });
     }
-  }, [shouldUpdate, center, zoom, map]);
+  }, [shouldUpdate, center, zoom, map, programmaticMoveRef]);
   return null;
 }
 
-const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, socket, isRefreshing, shouldUpdateCamera }) => {
+const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, socket, isRefreshing, shouldUpdateCamera, programmaticMoveRef, setMapReady, stationBoxLoaded }) => {
     const mapPosition = userLocation
         ? [userLocation.latitude, userLocation.longitude]
         : [50.0755, 14.4378]; // Prague center fallback
@@ -101,8 +114,8 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
                 attributionControl={false}
                 whenCreated={mapInstance => { mapRef.current = mapInstance; }}
             >
-                <MapViewUpdater center={centerPosition} zoom={selectedStop ? 16 : 16} shouldUpdate={localShouldUpdateCamera} />
-                <MapLocationTracker socket={socket} />
+                <MapViewUpdater center={centerPosition} zoom={selectedStop ? 16 : 16} shouldUpdate={localShouldUpdateCamera} programmaticMoveRef={programmaticMoveRef} setMapReady={setMapReady} />
+                <MapLocationTracker socket={socket} programmaticMoveRef={programmaticMoveRef} />
                 <TileLayer
                     attribution=""
                     url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
@@ -115,13 +128,13 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
                             icon={L.divIcon({
                                 className: `custom-stop-marker ${selectedStop && selectedStop.gtfsId === stop.gtfsId ? 'opacity-50' : ''}`,
                                 html: `
-                                    <div style="position: relative; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
-                                        <img src='${stationBoxIcon}' alt='Station' style="width: 32px; height: 32px; display: block; opacity: 1;" />
-                                        <span style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; color: white; text-shadow: 0 1px 4px rgba(0,0,0,0.7); pointer-events: none;">${stop.platform || 'P'}</span>
+                                    <div style="position: relative; width: 29px; height: 29px; display: flex; align-items: center; justify-content: center;">
+                                        <img src='${stationBoxIcon}' alt='Station' style="width: 29px; height: 29px; display: block; opacity: 1;" />
+                                        ${stationBoxLoaded ? `<span style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; color: white; text-shadow: 0 1px 4px rgba(0,0,0,0.7); pointer-events: none;">${stop.platform || 'P'}</span>` : ''}
                                     </div>
                                 `,
-                                iconSize: [32, 32],
-                                iconAnchor: [16, 16]
+                                iconSize: [29, 29],
+                                iconAnchor: [14.5, 14.5]
                             })}
                             eventHandlers={{
                                 click: () => {
@@ -251,29 +264,28 @@ const Arrival = ({ arrival }) => {
     const delayColor = getDelayColor(arrival?.delay?.seconds);
 
     return (
-        <div className={`flex justify-between items-start p-3 mb-2 rounded-lg border-b border-gray-800 transition-all duration-300`}>
-            <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3 mb-1">
-                    <span className="px-3 py-1 rounded-md font-bold text-center text-sm shadow-md flex-shrink-0 bg-yellow-500 text-black">
-                        {route.short_name}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                        <span className="font-medium text-white truncate block">{trip.headsign}</span>
-                        {delayString && (
-                            <div className="text-xs text-gray-400 flex items-center gap-2 mt-1">
-                                <span className={`font-semibold ${delayColor}`}>{delayString}</span>
-                                <img
-                                    src={iceIcon}
-                                    alt="Air Conditioning"
-                                    className={`w-4 h-4 ${trip.is_air_conditioned ? 'ice-icon-ac' : 'ice-icon-no-ac'}`}
-                                />
-                            </div>
-                        )}
-                    </div>
+        <div className={`flex justify-between items-center p-3 mb-2 rounded-lg border-b border-gray-800 transition-all duration-300`}>
+            <div className="flex items-center gap-3 mb-1">
+                <span className="px-3 py-1 rounded-md font-bold text-center text-sm shadow-md flex-shrink-0 bg-yellow-500 text-black">
+                    {route.short_name}
+                </span>
+                <div className="flex-1 min-w-0">
+                    <span className="font-medium text-white truncate block">{trip.headsign}</span>
+                    {delayString && (
+                        <div className="text-xs text-gray-400 flex items-center gap-2 mt-1">
+                            <span className={`font-semibold ${delayColor}`}>{delayString}</span>
+                            <img
+                                src={iceIcon}
+                                alt="Air Conditioning"
+                                className={`w-4 h-4 ${trip.is_air_conditioned ? 'ice-icon-ac' : 'ice-icon-no-ac'}`}
+                            />
+                        </div>
+                    )}
                 </div>
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
-                <span className={`text-lg font-bold w-20 text-right ${isDeparting ? 'text-orange-400 animate-pulse' : 'text-white'}`}>
+                <span className={`text-lg font-bold w-20 text-right ${isDeparting ? 'text-orange-400 animate-pulse' : 'text-white'}`}
+                >
                     {formatRemainingTime(remainingTime)}
                 </span>
             </div>
@@ -299,8 +311,15 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) =>
 
     return (
         <>
-            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] w-full max-w-3xl mx-auto">
-                <div className="bg-background-secondary rounded-2xl shadow-2xl border border-gray-700/50 animate-slide-up max-h-[calc(100vh-8rem)] overflow-hidden">
+            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] w-full max-w-3xl mx-auto px-2 sm:px-4" style={{ pointerEvents: 'auto' }}>
+                <div className="bg-background-secondary rounded-2xl shadow-2xl border border-gray-700/50 animate-slide-up overflow-hidden"
+                    style={{
+                        maxHeight: 'calc(100vh - 260px)', // 220px bottom menu + 40px gap
+                        overflowY: 'auto',
+                        marginLeft: 'auto',
+                        marginRight: 'auto',
+                    }}
+                >
                     <header className="flex items-center justify-between p-4 border-b border-gray-700/50">
                         <div className="flex-1">
                             <h2 className="m-0 text-lg font-semibold text-white truncate">{name}</h2>
@@ -360,11 +379,69 @@ function App() {
     const [isPanelExpanded, setIsPanelExpanded] = useState(false);
     const [shouldUpdateCamera, setShouldUpdateCamera] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isLayoutReady, setIsLayoutReady] = useState(false); // New state for layout readiness
+
+    // SplashScreen loading state
+    const [mapReady, _setMapReady] = useState(false);
+    const [locationReady, _setLocationReady] = useState(false);
+    const [stationsReady, _setStationsReady] = useState(false);
+    const [showSplash, setShowSplash] = useState(true);
+    const mapReadyRef = useRef(false);
+    const locationReadyRef = useRef(false);
+    const stationsReadyRef = useRef(false);
+    const setMapReady = (val) => {
+        if (val && !mapReadyRef.current) {
+            mapReadyRef.current = true;
+            _setMapReady(true);
+        } else if (!val) {
+            console.warn('Attempted to set mapReady to false, ignored.');
+        }
+    };
+    const setLocationReady = (val) => {
+        if (val && !locationReadyRef.current) {
+            locationReadyRef.current = true;
+            _setLocationReady(true);
+        } else if (!val) {
+            console.warn('Attempted to set locationReady to false, ignored.');
+        }
+    };
+    const setStationsReady = (val) => {
+        if (val && !stationsReadyRef.current) {
+            stationsReadyRef.current = true;
+            _setStationsReady(true);
+        } else if (!val) {
+            console.warn('Attempted to set stationsReady to false, ignored.');
+        }
+    };
+
+    // Calculate progress: 0, 33, 66, 100
+    const progress = (mapReady + locationReady + stationsReady) / 3 * 100;
+
+    // Hide splash when all are ready
+    useEffect(() => {
+        if (mapReady && locationReady && stationsReady) {
+            setTimeout(() => setShowSplash(false), 500); // fade out
+        }
+    }, [mapReady, locationReady, stationsReady]);
+
+    // Add state to track if stationBoxIcon is loaded
+    const [stationBoxLoaded, setStationBoxLoaded] = useState(false);
+
+    useEffect(() => {
+      const img = new window.Image();
+      img.src = stationBoxIcon;
+      img.onload = () => setStationBoxLoaded(true);
+    }, []);
+
+    // Pass setMapReady to AppMap so it can call when map is ready
+    // Pass setLocationReady to location logic
+    // Pass setStationsReady to stops logic
 
     const debounceTimeout = useRef(null);
     const hasFetchedForLocation = useRef(false);
     const selectedStopRef = useRef(null);
     const menuScrollRef = useRef(null);
+    const programmaticMoveRef = useRef(false);
 
     useEffect(() => {
         /**
@@ -390,6 +467,7 @@ function App() {
                     const uniqueNewStops = (newStops || []).filter(s => !existingStopIds.has(s.uniqueStopPointId));
                     return [...prevMapStops, ...uniqueNewStops];
                 });
+                // Do NOT setStationsReady here
             } else { // This handles initial load, search, and manual refresh.
                 console.log('Received stops for bottom menu:', newStops.length);
                 let stopsData = newStops || [];
@@ -400,6 +478,7 @@ function App() {
                 setBottomMenuStops(stopsData);
                 setMapStops(stopsData); // Reset map stops to match the main list.
                 setIsLoading(false);
+                setStationsReady(true); // stations loaded
             }
         };
 
@@ -438,12 +517,16 @@ function App() {
                 socket.emit('searchStops', { lat: latitude, lon: longitude, timestamp: Date.now() });
                 setShouldUpdateCamera(true);
                 setTimeout(() => setShouldUpdateCamera(false), 100);
+                setLocationReady(true); // location loaded
             }, () => {
                 setIsLoading(false);
                 setErrors(prev => [...prev, "Location access denied. Using default location."]);
+                socket.emit('searchStops', { timestamp: Date.now() }); // <--- Ensure stops are requested when location denied
+                setLocationReady(true); // fallback loaded
             });
         } else {
              setIsLoading(false);
+             setLocationReady(true); // fallback loaded
         }
     }, []);
 
@@ -524,7 +607,10 @@ function App() {
             }, () => {
                 setIsLoading(false);
                 setErrors(prev => [...prev, "Location access denied. Using default location."]);
+                socket.emit('searchStops', { timestamp: Date.now() }); // <--- Ensure refresh works with no GPS
             });
+        } else {
+            socket.emit('searchStops', { timestamp: Date.now() }); // <--- Fallback for browsers with no geolocation
         }
     };
 
@@ -540,31 +626,58 @@ function App() {
     const currentCards = bottomMenuStops.slice(indexOfFirstCard, indexOfLastCard);
     const totalPages = Math.ceil(bottomMenuStops.length / cardsPerPage);
 
-    // Mobile 100vh fix
+    // Mobile 100vh fix and layout readiness
     useEffect(() => {
         function setVh() {
             document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
         }
         setVh();
+        setIsLayoutReady(true);
         window.addEventListener('resize', setVh);
-        return () => window.removeEventListener('resize', setVh);
+        window.addEventListener('orientationchange', setVh);
+        return () => {
+            window.removeEventListener('resize', setVh);
+            window.removeEventListener('orientationchange', setVh);
+        };
     }, []);
 
+    // Detect standalone mode once at render
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+      window.navigator.standalone === true;
+
+    // In the main App component, add this effect to lock body scroll when the bottom menu is open
+    useEffect(() => {
+      const root = document.body;
+      if (isPanelExpanded) {
+        root.classList.add('overflow-hidden');
+      } else {
+        root.classList.remove('overflow-hidden');
+      }
+      return () => root.classList.remove('overflow-hidden');
+    }, [isPanelExpanded]);
+
     return (
-        <div className="h-screen-fix w-screen overflow-hidden bg-background-primary relative">
-            <AppMap
-                stops={mapStops}
-                userLocation={userLocation}
-                onStopSelect={handleStopSelect}
-                selectedStop={selectedStop}
-                socket={socket}
-                isRefreshing={isRefreshing}
-                shouldUpdateCamera={shouldUpdateCamera}
+        <>
+          {showSplash && <SplashScreen progress={progress} isStandalone={isStandalone} />}
+          <div
+            className={`h-screen-fix w-screen overflow-hidden bg-background-primary relative ${isStandalone ? 'pb-8' : ''}`}
+          >
+            <AppMap 
+              stops={mapStops} 
+              userLocation={userLocation} 
+              onStopSelect={handleStopSelect} 
+              selectedStop={selectedStop}
+              socket={socket}
+              isRefreshing={isRefreshing}
+              shouldUpdateCamera={shouldUpdateCamera}
+              programmaticMoveRef={programmaticMoveRef}
+              setMapReady={setMapReady}
+              stationBoxLoaded={stationBoxLoaded} // <-- pass as prop
             />
-            
+        
             <header className="absolute top-0 left-0 w-full z-20 p-4 pointer-events-none">
                 <div className="max-w-xl w-full mx-auto flex flex-col items-center gap-3 pointer-events-auto">
-                    <h1 className="m-0 font-bold text-3xl text-white tracking-tighter" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.7)' }}>
+                    <h1 className="m-0 font-bold text-3xl text-white tracking-tighter font-onest" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.7)' }}>
                         BusGo
                     </h1>
                     <div className="relative w-full">
@@ -650,7 +763,7 @@ function App() {
                     </div>
 
                     {totalPages > 1 && isPanelExpanded && (
-                        <div className="flex-shrink-0 border-t border-gray-700/60">
+                        <div className={`flex-shrink-0 border-t border-gray-700/60${isStandalone ? ' pb-8' : ''}`}>
                              <Pagination
                                 currentPage={currentPage}
                                 totalPages={totalPages}
@@ -674,6 +787,7 @@ function App() {
             <MessagesSection messages={messages} />
             <ErrorsSection errors={errors.filter(e => !e.stopId)} removeError={removeError} />
         </div>
+        </>
     );
 }
 
