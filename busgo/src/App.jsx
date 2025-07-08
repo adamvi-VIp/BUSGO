@@ -289,7 +289,7 @@ const Arrival = ({ arrival }) => {
                 </div>
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
-                <span className={`text-lg font-bold w-20 text-right ${isDeparting ? 'text-orange-400 animate-pulse' : 'text-white'} mr-1 truncate`}
+                <span className={`text-lg font-bold text-right ${isDeparting ? 'text-orange-400 animate-pulse' : 'text-white'} mr-1`}
                 >
                     {formattedTime !== 'N/A' && formattedTime !== null ? formattedTime : ''}
                 </span>

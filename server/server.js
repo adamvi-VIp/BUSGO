@@ -133,7 +133,8 @@ async function cacheStopsData() {
                     const gtfsId = stop.gtfsIds[0];
                     return {
                         uniqueStopPointId: `${gtfsId}-${index}`,
-                        gtfsId: gtfsId,
+                        gtfsId: gtfsId, // main id for compatibility
+                        gtfsIds: stop.gtfsIds, // store all ids
                         name: stop.groupName,
                         lat: stop.lat,
                         lon: stop.lon,
@@ -225,13 +226,36 @@ io.on('connection', (socket) => {
             clearInterval(existingTimer.intervalId);
         }
 
+        // --- NEW LOGIC: Find all gtfsIds for this stop ---
+        const stopEntry = processedStopsCache.find(stop => stop.gtfsId === stopId || (Array.isArray(stop.gtfsIds) && stop.gtfsIds.includes(stopId)));
+        const gtfsIds = stopEntry && Array.isArray(stopEntry.gtfsIds) && stopEntry.gtfsIds.length > 0
+            ? stopEntry.gtfsIds
+            : [stopId];
+
         const fetchData = async () => {
             try {
-                const newData = await fetchDeparturesFromPID(stopId);
-                if (!isEqual(newData, lastKnownData.get(stopId))) {
+                // Fetch departures for all gtfsIds in parallel
+                const allDepartures = await Promise.all(gtfsIds.map(id => fetchDeparturesFromPID(id)));
+                // Merge departures arrays
+                const mergedDepartures = allDepartures.reduce((acc, data) => {
+                    if (Array.isArray(data.departures)) {
+                        acc.push(...data.departures);
+                    }
+                    return acc;
+                }, []);
+                // Optionally deduplicate by trip id or departure time
+                const dedupedDepartures = Array.from(new Map(mergedDepartures.map(dep => [dep.trip?.id + '-' + (dep.departure_timestamp?.predicted || dep.departure_timestamp?.scheduled), dep])).values());
+                // Sort by soonest
+                dedupedDepartures.sort((a, b) => {
+                    const timeA = a.departure_timestamp?.predicted || a.departure_timestamp?.scheduled || 0;
+                    const timeB = b.departure_timestamp?.predicted || b.departure_timestamp?.scheduled || 0;
+                    return timeA - timeB;
+                });
+                const mergedData = { departures: dedupedDepartures };
+                if (!isEqual(mergedData, lastKnownData.get(stopId))) {
                     console.log(`[POLL] Data for [${stopId}] changed. Emitting to client ${socket.id}.`);
-                    socket.emit('departureData', newData);
-                    lastKnownData.set(stopId, newData);
+                    socket.emit('departureData', mergedData);
+                    lastKnownData.set(stopId, mergedData);
                 }
             } catch (error) {
                 console.error(`[ERROR] Polling for [${stopId}] failed:`, error.message);
