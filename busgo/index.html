@@ -41,6 +41,11 @@
           navigator.serviceWorker.register('/service-worker.js').catch(console.error);
         });
       }
+      // Use the same isStandalone logic as in App.jsx
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+      if (isStandalone) {
+        document.getElementById('html-splash').style.paddingBottom = '8px';
+      }
     </script>
   </body>
 </html>
