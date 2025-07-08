@@ -263,14 +263,19 @@ const Arrival = ({ arrival }) => {
     
     const delayColor = getDelayColor(arrival?.delay?.seconds);
 
+    // In Arrival component, only render the time if it is not null and not 'N/A'.
+    const formattedTime = formatRemainingTime(remainingTime);
+
     return (
-        <div className={`flex justify-between items-center p-3 mb-2 rounded-lg border-b border-gray-800 transition-all duration-300`}>
-            <div className="flex items-center gap-3 mb-1">
+        <div className={`flex justify-between items-center p-3 mb-2 rounded-lg border-b border-gray-800 transition-all duration-300 overflow-x-hidden`}>
+            <div className="flex items-center gap-3 mb-1 min-w-0">
                 <span className="px-3 py-1 rounded-md font-bold text-center text-sm shadow-md flex-shrink-0 bg-yellow-500 text-black">
                     {route.short_name}
                 </span>
                 <div className="flex-1 min-w-0">
-                    <span className="font-medium text-white truncate block">{trip.headsign}</span>
+                    <span className="font-medium text-white break-words block whitespace-normal">
+                        {trip.headsign}
+                    </span>
                     {delayString && (
                         <div className="text-xs text-gray-400 flex items-center gap-2 mt-1">
                             <span className={`font-semibold ${delayColor}`}>{delayString}</span>
@@ -284,9 +289,9 @@ const Arrival = ({ arrival }) => {
                 </div>
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
-                <span className={`text-lg font-bold w-20 text-right ${isDeparting ? 'text-orange-400 animate-pulse' : 'text-white'}`}
+                <span className={`text-lg font-bold w-20 text-right ${isDeparting ? 'text-orange-400 animate-pulse' : 'text-white'} mr-1 truncate`}
                 >
-                    {formatRemainingTime(remainingTime)}
+                    {formattedTime !== 'N/A' && formattedTime !== null ? formattedTime : ''}
                 </span>
             </div>
         </div>
@@ -311,16 +316,17 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) =>
 
     return (
         <>
-            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] w-full max-w-3xl mx-auto px-2 sm:px-4" style={{ pointerEvents: 'auto' }}>
+            <div className="fixed top-2 left-1/2 transform -translate-x-1/2 z-[60] w-full max-w-3xl mx-auto px-2 sm:px-4" style={{ pointerEvents: 'auto' }}>
                 <div className="bg-background-secondary rounded-2xl shadow-2xl border border-gray-700/50 animate-slide-up overflow-hidden"
                     style={{
-                        maxHeight: 'calc(100vh - 260px)', // 220px bottom menu + 40px gap
-                        overflowY: 'auto',
+                        maxHeight: 'calc(100vh - 160px)', // 220px bottom menu + 40px gap
                         marginLeft: 'auto',
                         marginRight: 'auto',
+                        display: 'flex',
+                        flexDirection: 'column',
                     }}
                 >
-                    <header className="flex items-center justify-between p-4 border-b border-gray-700/50">
+                    <header className="flex items-center justify-between p-4 border-b border-gray-700/50 flex-shrink-0">
                         <div className="flex-1">
                             <h2 className="m-0 text-lg font-semibold text-white truncate">{name}</h2>
                             <div className="flex items-center gap-3 text-xs text-gray-400 mt-1">
@@ -340,7 +346,8 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) =>
                         </button>
                     </header>
 
-                    <div className="overflow-y-auto p-4" style={{ maxHeight: 'calc(100vh - 12rem)' }}>
+                    {/* Only this div scrolls */}
+                    <div className="overflow-y-auto p-4 flex-1" style={{ maxHeight: 'calc(100vh - 340px)' }}>
                         {isLoadingRealTime && <LoadingScreen />}
                         {error && <div className="text-center text-red-400 p-4 bg-red-500/10 rounded-xl text-sm">{error.error}</div>}
                         {realTimeData && (

@@ -1,7 +1,7 @@
 import React from 'react';
 
 const StopItem = React.forwardRef(({ stop, handleStopSelect, isSelected }, ref) => {
-    const { name, zone, lines } = stop;
+    const { name, zone, lines, platform } = stop;
 
     return (
         <div
@@ -14,11 +14,11 @@ const StopItem = React.forwardRef(({ stop, handleStopSelect, isSelected }, ref) 
             }`}
         >
             <div className="flex-grow min-w-0">
-                <h2 className="text-base font-semibold text-white truncate">
+                <h2 className="text-base font-semibold text-white break-all whitespace-normal">
                     {name}
                 </h2>
                 <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
-                    <span>Zone: {zone}</span>
+                    <span>Zone {zone} | Platform {platform || 'N/A'}</span>
                 </div>
             </div>
             <div className="flex-shrink-0 flex flex-wrap-reverse justify-end gap-1.5 max-w-[50%]">
