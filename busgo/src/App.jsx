@@ -11,6 +11,7 @@ import MapLocationTracker from './components/MapLocationTracker';
 import locationIcon from './assets/location.svg';
 import refreshIcon from './assets/refresh.svg';
 import iceIcon from './assets/ice.svg';
+import stationBoxPng from './assets/stationbox.png';
 
 // --- Map Components ---
 function MapViewUpdater({ center, zoom, shouldUpdate }) {
@@ -37,7 +38,36 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
         : mapPosition;
 
     const [localShouldUpdateCamera, setLocalShouldUpdateCamera] = useState(false);
-    
+    const [bounds, setBounds] = useState(null);
+    const mapRef = useRef();
+
+    // Debounced bounds update
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map) return;
+        let timeout;
+        const updateBounds = () => {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => {
+                setBounds(map.getBounds());
+            }, 100); // 100ms debounce
+        };
+        map.on('moveend', updateBounds);
+        updateBounds();
+        return () => {
+            map.off('moveend', updateBounds);
+            clearTimeout(timeout);
+        };
+    }, []);
+
+    // Memoize visible stops
+    const visibleStops = useMemo(() => {
+        if (!bounds) return stops;
+        return stops.filter(stop =>
+            stop.lat && stop.lon && bounds.contains([stop.lat, stop.lon])
+        );
+    }, [stops, bounds]);
+
     useEffect(() => {
         if (selectedStop) {
             console.log('[MAP] Stop selected, moving camera to:', selectedStop.name);
@@ -66,6 +96,9 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
         console.log('AppMap rendering with position:', centerPosition, 'stops:', stops.length, 'userLocation:', userLocation, 'selectedStop:', selectedStop?.name);
     }, [stops.length, selectedStop?.gtfsId, userLocation, centerPosition]);
 
+    const MAX_MARKERS = 200;
+    const visibleStopsLimited = visibleStops.slice(0, MAX_MARKERS);
+
     return (
         <div className="absolute inset-0 z-0 h-full w-full">
             <MapContainer 
@@ -75,6 +108,7 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
                 zoomControl={false}
                 style={{ height: '100%', width: '100%' }}
                 attributionControl={false}
+                whenCreated={mapInstance => { mapRef.current = mapInstance; }}
             >
                 <MapViewUpdater center={centerPosition} zoom={selectedStop ? 16 : 16} shouldUpdate={localShouldUpdateCamera} />
                 <MapLocationTracker socket={socket} />
@@ -82,16 +116,19 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
                     attribution=""
                     url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
                 />
-                {stops.map(stop => (
+                {visibleStopsLimited.map(stop => (
                     (stop.lat && stop.lon) && (
                         <Marker 
                             key={stop.uniqueStopPointId} 
                             position={[stop.lat, stop.lon]}
                             icon={L.divIcon({
-                                className: `custom-stop-marker ${selectedStop && selectedStop.gtfsId === stop.gtfsId ? 'cursor-default' : 'cursor-pointer'}`,
+                                className: `custom-stop-marker`,
                                 html: `
-                                    <div class="bg-blue-500 text-white rounded-lg w-8 h-8 text-xs font-bold shadow-xl border-2 border-gray-300 flex items-center justify-center ${selectedStop && selectedStop.gtfsId === stop.gtfsId ? 'opacity-50' : 'hover:bg-blue-600'} transition-all duration-200">
-                                        ${stop.platform || 'P'}
+                                    <div style="position: relative; width: 32px; height: 32px;">
+                                        <img src='${stationBoxPng}' alt='Stop' style="width: 32px; height: 32px; display: block; ${selectedStop && selectedStop.gtfsId === stop.gtfsId ? 'opacity:0.5;' : ''}" />
+                                        <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; color: white; text-shadow: 0 1px 2px #000; pointer-events: none;">
+                                            ${stop.platform || 'P'}
+                                        </div>
                                     </div>
                                 `,
                                 iconSize: [32, 32],
@@ -273,7 +310,7 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) =>
 
     return (
         <>
-            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] w-[calc(100%-2rem)] max-w-lg">
+            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] w-full max-w-3xl mx-auto">
                 <div className="bg-background-secondary rounded-2xl shadow-2xl border border-gray-700/50 animate-slide-up max-h-[calc(100vh-8rem)] overflow-hidden">
                     <header className="flex items-center justify-between p-4 border-b border-gray-700/50">
                         <div className="flex-1">
@@ -286,7 +323,7 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) =>
                         </div>
                         <button
                             onClick={onClose}
-                            className="bg-gray-800/80 hover:bg-gray-700/80 border border-gray-600/50 rounded-xl text-gray-300 hover:text-white w-8 h-8 flex items-center justify-center cursor-pointer transition-all duration-200 ease-in-out hover:scale-105 active:scale-95 flex-shrink-0 ml-3 group"
+                            className="bg-red-600/80 hover:bg-red-700/90 border border-red-400/60 rounded-xl text-white hover:text-white w-8 h-8 flex items-center justify-center cursor-pointer transition-all duration-200 ease-in-out hover:scale-105 active:scale-95 flex-shrink-0 ml-3 group focus:outline-none focus:ring-2 focus:ring-red-400"
                             aria-label="Close modal"
                         >
                             <svg className="w-4 h-4 transition-transform duration-200 group-hover:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -576,7 +613,7 @@ function App() {
                             )}
                             <button 
                                 onClick={handleRefreshClick}
-                                className="absolute right-0 top-0 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 hover:from-blue-500/30 hover:to-cyan-500/30 px-3 py-1 rounded-full border border-blue-400/30 transition-all duration-200 hover:scale-105 shadow-sm backdrop-blur-sm flex items-center justify-center"
+                                className="absolute right-0 top-0 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 active:from-blue-500/30 active:to-cyan-500/30 px-3 py-1 rounded-full border border-blue-400/30 transition-all duration-200 hover:scale-105 shadow-sm backdrop-blur-sm flex items-center justify-center"
                             >
                                 <img 
                                     src={refreshIcon} 
