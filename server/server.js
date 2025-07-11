@@ -156,8 +156,8 @@ async function cacheStopsData() {
 }
 
 // --- Real-time Polling Management ---
-const activeTimers = new Map();
-const lastKnownData = new Map();
+const activeTimers = new Map(); // key: `${socket.id}:${stopId}`
+const lastKnownData = new Map(); // key: `${socket.id}:${stopId}`
 
 // --- Socket.IO Connection Handling ---
 io.on('connection', (socket) => {
@@ -219,13 +219,27 @@ io.on('connection', (socket) => {
             return console.error(`[ERROR] Received request for departures with a NULL stopId from socket ${socket.id}`);
         }
         
+        const timerKey = `${socket.id}:${stopId}`;
+        
+        // Check if already monitoring this stop
+        if (activeTimers.has(timerKey)) {
+            // Count how many users are monitoring this stop
+            const usersMonitoringThisStop = Array.from(activeTimers.keys()).filter(key => key.endsWith(`:${stopId}`)).length;
+            console.log(`[POLL] User ${socket.id} already monitoring stop [${stopId}], sending current data immediately (${usersMonitoringThisStop} total users monitoring this stop)`);
+            // Send current data immediately even if already monitoring
+            const currentData = lastKnownData.get(timerKey);
+            if (currentData) {
+                socket.emit('departureData', currentData);
+            }
+            return;
+        }
+        
         console.log(`[POLL] User ${socket.id} requested departures for stop [${stopId}]`);
         
-        if (activeTimers.has(stopId)) {
-            const existingTimer = activeTimers.get(stopId);
-            clearInterval(existingTimer.intervalId);
-        }
-
+        // Count how many users are monitoring this stop
+        const usersMonitoringThisStop = Array.from(activeTimers.keys()).filter(key => key.endsWith(`:${stopId}`)).length;
+        console.log(`[POLL] Currently ${usersMonitoringThisStop} user(s) monitoring stop [${stopId}]`);
+        
         // --- NEW LOGIC: Find all gtfsIds for this stop ---
         const stopEntry = processedStopsCache.find(stop => stop.gtfsId === stopId || (Array.isArray(stop.gtfsIds) && stop.gtfsIds.includes(stopId)));
         const gtfsIds = stopEntry && Array.isArray(stopEntry.gtfsIds) && stopEntry.gtfsIds.length > 0
@@ -252,47 +266,74 @@ io.on('connection', (socket) => {
                     return timeA - timeB;
                 });
                 const mergedData = { departures: dedupedDepartures };
-                if (!isEqual(mergedData, lastKnownData.get(stopId))) {
-                    console.log(`[POLL] Data for [${stopId}] changed. Emitting to client ${socket.id}.`);
+                
+                // Always emit on first fetch, then only if data changed
+                const isFirstFetch = !lastKnownData.has(timerKey);
+                if (isFirstFetch || (!isEqual(mergedData, lastKnownData.get(timerKey)) && activeTimers.has(timerKey))) {
+                    // Count how many users are monitoring this stop
+                    const usersMonitoringThisStop = Array.from(activeTimers.keys()).filter(key => key.endsWith(`:${stopId}`)).length;
+                    console.log(`[POLL] ${isFirstFetch ? 'Initial' : 'Updated'} data for [${stopId}]. Emitting to user ${socket.id} (${usersMonitoringThisStop} total users monitoring this stop)`);
                     socket.emit('departureData', mergedData);
-                    lastKnownData.set(stopId, mergedData);
+                    lastKnownData.set(timerKey, mergedData);
                 }
             } catch (error) {
                 console.error(`[ERROR] Polling for [${stopId}] failed:`, error.message);
                 socket.emit('departureError', { stopId, error: 'Failed to fetch new departure data.' });
-                if (activeTimers.has(stopId)) {
-                    clearInterval(activeTimers.get(stopId).intervalId);
-                    activeTimers.delete(stopId);
+                if (activeTimers.has(timerKey)) {
+                    clearInterval(activeTimers.get(timerKey).intervalId);
+                    activeTimers.delete(timerKey);
+                    lastKnownData.delete(timerKey);
                 }
             }
         };
 
         fetchData();
         const intervalId = setInterval(fetchData, POLLING_INTERVAL);
-        activeTimers.set(stopId, { socketId: socket.id, intervalId });
+        activeTimers.set(timerKey, { socketId: socket.id, stopId, intervalId });
     });
 
     socket.on('stopDepartureMonitoring', (stopId) => {
-        if (activeTimers.has(stopId)) {
-            const timer = activeTimers.get(stopId);
-            if (timer.socketId === socket.id) {
-                console.log(`[POLL] User ${socket.id} stopped monitoring stop [${stopId}]`);
-                clearInterval(timer.intervalId);
-                activeTimers.delete(stopId);
-                lastKnownData.delete(stopId);
+        const timerKey = `${socket.id}:${stopId}`;
+        if (activeTimers.has(timerKey)) {
+            const timer = activeTimers.get(timerKey);
+            clearInterval(timer.intervalId);
+            activeTimers.delete(timerKey);
+            lastKnownData.delete(timerKey);
+            // Count how many users are still monitoring this stop
+            const stillMonitoring = Array.from(activeTimers.keys()).filter(key => key.endsWith(`:${stopId}`)).length;
+            if (stillMonitoring > 0) {
+                console.log(`[POLL] User ${socket.id} stopped monitoring stop [${stopId}]. Still ${stillMonitoring} user(s) monitoring this stop.`);
+            } else {
+                console.log(`[POLL] User ${socket.id} stopped monitoring stop [${stopId}]. No users are monitoring this stop now.`);
             }
+        } else {
+            console.log(`[POLL] User ${socket.id} tried to stop monitoring stop [${stopId}] but was not monitoring it.`);
         }
     });
 
     socket.on('disconnect', () => {
         console.log(`[INFO] User disconnected: ${socket.id}. Will stop sending data to this user. Total users now: ${io.engine.clientsCount}`);
-        for (const [stopId, timer] of activeTimers.entries()) {
+        let stopsAffected = [];
+        for (const [timerKey, timer] of Array.from(activeTimers.entries())) {
             if (timer.socketId === socket.id) {
-                console.log(`[CLEANUP] Clearing timer for stop ${stopId} due to disconnect from socket ${socket.id}`);
                 clearInterval(timer.intervalId);
-                activeTimers.delete(stopId);
-                lastKnownData.delete(stopId);
+                activeTimers.delete(timerKey);
+                lastKnownData.delete(timerKey);
+                stopsAffected.push(timer.stopId);
             }
+        }
+        
+        // Log summary of affected stops
+        if (stopsAffected.length > 0) {
+            const uniqueStops = [...new Set(stopsAffected)];
+            uniqueStops.forEach(stopId => {
+                const stillMonitoring = Array.from(activeTimers.keys()).filter(key => key.endsWith(`:${stopId}`)).length;
+                if (stillMonitoring > 0) {
+                    console.log(`[CLEANUP] User ${socket.id} disconnected and stopped monitoring stop [${stopId}]. Still ${stillMonitoring} user(s) monitoring this stop.`);
+                } else {
+                    console.log(`[CLEANUP] User ${socket.id} disconnected and stopped monitoring stop [${stopId}]. No users are monitoring this stop now.`);
+                }
+            });
         }
     });
 });

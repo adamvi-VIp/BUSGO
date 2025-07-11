@@ -13,6 +13,7 @@ import refreshIcon from './assets/refresh.svg';
 import iceIcon from './assets/ice.svg';
 import stationBoxIcon from './assets/stationbox.png';
 import SplashScreen from './components/SplashScreen';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
 
 // --- Map Components ---
 function MapViewUpdater({ center, zoom, shouldUpdate, programmaticMoveRef, setMapReady }) {
@@ -440,10 +441,15 @@ function App() {
     const [messages, setMessages] = useState([]);
     const [errors, setErrors] = useState([]);
     const [userLocation, setUserLocation] = useState(null);
+    const [locationPermissionStatus, setLocationPermissionStatus] = useState('pending'); // 'pending', 'granted', 'denied'
     const [isPanelExpanded, setIsPanelExpanded] = useState(false);
     const [shouldUpdateCamera, setShouldUpdateCamera] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isLayoutReady, setIsLayoutReady] = useState(false); // New state for layout readiness
+
+    // PWA Install Prompt state
+    const [showPWAInstall, setShowPWAInstall] = useState(false);
+    const [pwaPromptDismissed, setPwaPromptDismissed] = useState(false);
 
     // SplashScreen loading state
     const [mapReady, _setMapReady] = useState(false);
@@ -575,22 +581,72 @@ function App() {
     useEffect(() => {
         if (navigator.geolocation && !hasFetchedForLocation.current) {
             hasFetchedForLocation.current = true;
-            navigator.geolocation.getCurrentPosition(position => {
-                const { latitude, longitude } = position.coords;
-                setUserLocation({ latitude, longitude });
-                socket.emit('searchStops', { lat: latitude, lon: longitude, timestamp: Date.now() });
-                setShouldUpdateCamera(true);
-                setTimeout(() => setShouldUpdateCamera(false), 100);
-                setLocationReady(true); // location loaded
-            }, () => {
-                setIsLoading(false);
-                setErrors(prev => [...prev, "Location access denied. Using default location."]);
-                socket.emit('searchStops', { timestamp: Date.now() }); // <--- Ensure stops are requested when location denied
-                setLocationReady(true); // fallback loaded
+            console.log('[INIT] Fetching location and stops...');
+            
+            // Check location permission status first
+            navigator.permissions.query({ name: 'geolocation' }).then(permissionStatus => {
+                setLocationPermissionStatus(permissionStatus.state);
+                
+                if (permissionStatus.state === 'denied') {
+                    // Permission already denied, use default location
+                    console.log('[INIT] Location permission already denied, using default location');
+                    setIsLoading(false);
+                    setErrors(prev => [...prev, "Location access denied. Using default location."]);
+                    socket.emit('searchStops', { timestamp: Date.now() });
+                    setLocationReady(true);
+                    setLocationPermissionStatus('denied');
+                } else {
+                    // Try to get location
+                    navigator.geolocation.getCurrentPosition(position => {
+                        const { latitude, longitude } = position.coords;
+                        setUserLocation({ latitude, longitude });
+                        socket.emit('searchStops', { lat: latitude, lon: longitude, timestamp: Date.now() });
+                        setShouldUpdateCamera(true);
+                        setTimeout(() => setShouldUpdateCamera(false), 100);
+                        setLocationReady(true);
+                        setLocationPermissionStatus('granted');
+                    }, (error) => {
+                        console.log('[INIT] Location access denied:', error.message);
+                        setIsLoading(false);
+                        setErrors(prev => [...prev, "Location access denied. Using default location."]);
+                        socket.emit('searchStops', { timestamp: Date.now() });
+                        setLocationReady(true);
+                        setLocationPermissionStatus('denied');
+                    }, {
+                        timeout: 10000, // 10 second timeout
+                        enableHighAccuracy: false,
+                        maximumAge: 60000 // 1 minute cache
+                    });
+                }
+            }).catch(() => {
+                // Fallback for browsers that don't support permissions API
+                navigator.geolocation.getCurrentPosition(position => {
+                    const { latitude, longitude } = position.coords;
+                    setUserLocation({ latitude, longitude });
+                    socket.emit('searchStops', { lat: latitude, lon: longitude, timestamp: Date.now() });
+                    setShouldUpdateCamera(true);
+                    setTimeout(() => setShouldUpdateCamera(false), 100);
+                    setLocationReady(true);
+                    setLocationPermissionStatus('granted');
+                }, (error) => {
+                    console.log('[INIT] Location access denied:', error.message);
+                    setIsLoading(false);
+                    setErrors(prev => [...prev, "Location access denied. Using default location."]);
+                    socket.emit('searchStops', { timestamp: Date.now() });
+                    setLocationReady(true);
+                    setLocationPermissionStatus('denied');
+                }, {
+                    timeout: 10000,
+                    enableHighAccuracy: false,
+                    maximumAge: 60000
+                });
             });
-        } else {
-             setIsLoading(false);
-             setLocationReady(true); // fallback loaded
+        } else if (!navigator.geolocation) {
+            // Browser doesn't support geolocation
+            console.log('[INIT] Geolocation not supported, using default location');
+            setIsLoading(false);
+            setLocationReady(true);
+            setLocationPermissionStatus('denied');
         }
     }, []);
 
@@ -605,24 +661,56 @@ function App() {
 
     // Robust reconnection and visibility handling
     useEffect(() => {
+        let isReconnecting = false;
+        let lastRequestTime = 0;
+        
         // Helper to re-request stops and departures
         const reRequestData = () => {
-            // Always refresh stops (location or default)
-            if (userLocation) {
-                socket.emit('searchStops', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
+            const now = Date.now();
+            if (isReconnecting || (now - lastRequestTime) < 2000) return; // Prevent duplicate requests within 2 seconds
+            isReconnecting = true;
+            lastRequestTime = now;
+            
+            console.log('[RECONNECT] Requesting data...');
+            
+            // Preserve current search state on reconnect
+            if (searchTerm && searchTerm.length > 0) {
+                // Re-search for the current search term
+                socket.emit('searchStops', { query: searchTerm, timestamp: Date.now() });
             } else {
-                socket.emit('searchStops', { timestamp: Date.now() });
+                // Show nearby stations (location or default)
+                if (userLocation && locationPermissionStatus === 'granted') {
+                    socket.emit('searchStops', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
+                } else if (locationPermissionStatus === 'denied') {
+                    socket.emit('searchStops', { timestamp: Date.now() });
+                }
+                // If locationPermissionStatus is still 'pending', don't request anything yet
             }
             // If a stop is selected, re-monitor it
             if (selectedStop) {
                 socket.emit('requestDepartures', selectedStop.gtfsId);
+                // Set timeout for reconnection loading state
+                setTimeout(() => {
+                    if (isLoadingRealTime) {
+                        console.log('[RECONNECT-TIMEOUT] Departure data loading timeout after reconnect, resetting state');
+                        setIsLoadingRealTime(false);
+                        setErrors(prev => [...prev, 'Departure data loading timed out after reconnect. Please try again.']);
+                    }
+                }, 10000); // 10 second timeout
             }
+            
+            // Reset flag after a delay
+            setTimeout(() => {
+                isReconnecting = false;
+            }, 2000);
         };
+        
         // On socket reconnect
         const onConnect = () => {
             reRequestData();
         };
         socket.on('connect', onConnect);
+        
         // On tab visibility
         const onVisibility = () => {
             if (document.visibilityState === 'visible') {
@@ -630,15 +718,17 @@ function App() {
             }
         };
         document.addEventListener('visibilitychange', onVisibility);
+        
         // On mount, if selectedStop exists, re-monitor it (in case of reload)
         if (selectedStop) {
             socket.emit('requestDepartures', selectedStop.gtfsId);
         }
+        
         return () => {
             socket.off('connect', onConnect);
             document.removeEventListener('visibilitychange', onVisibility);
         };
-    }, [selectedStop, userLocation]);
+            }, [userLocation, searchTerm, locationPermissionStatus]); // Added locationPermissionStatus to dependencies
 
     const handleSearchChange = useCallback((event) => {
         const newSearchTerm = event.target.value;
@@ -658,16 +748,22 @@ function App() {
             if (newSearchTerm.length > 0) {
                  socket.emit('searchStops', { query: newSearchTerm, timestamp: Date.now() });
             } else {
-                if (userLocation) {
+                if (userLocation && locationPermissionStatus === 'granted') {
                     socket.emit('searchStops', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
-                } else {
+                } else if (locationPermissionStatus === 'denied') {
                     socket.emit('searchStops', { timestamp: Date.now() });
                 }
+                // If locationPermissionStatus is still 'pending', don't request anything yet
             }
         }, 300);
-    }, [selectedStop, userLocation]);
+            }, [selectedStop, userLocation, locationPermissionStatus]);
 
     const handleStopSelect = (stop) => {
+        // Prevent duplicate requests for the same stop only if we're not in a loading state
+        if (selectedStop && selectedStop.gtfsId === stop.gtfsId && !isLoadingRealTime) {
+            return;
+        }
+        
         if (selectedStop && selectedStop.gtfsId !== stop.gtfsId) {
             socket.emit('stopDepartureMonitoring', selectedStop.gtfsId);
         }
@@ -676,6 +772,14 @@ function App() {
         setIsLoadingRealTime(true);
         setRealTimeData(null);
         socket.emit('requestDepartures', stop.gtfsId);
+        // Set timeout for loading state
+        setTimeout(() => {
+            if (isLoadingRealTime) {
+                console.log('[TIMEOUT] Departure data loading timeout, resetting state');
+                setIsLoadingRealTime(false);
+                setErrors(prev => [...prev, 'Departure data loading timed out. Please try again.']);
+            }
+        }, 10000); // 10 second timeout
         // Persist selected stop immediately
         sessionStorage.setItem('selectedStop', JSON.stringify(stop));
         setTimeout(() => {
@@ -716,14 +820,23 @@ function App() {
             navigator.geolocation.getCurrentPosition(position => {
                 const { latitude, longitude } = position.coords;
                 setUserLocation({ latitude, longitude });
+                setLocationPermissionStatus('granted');
                 socket.emit('searchStops', { lat: latitude, lon: longitude, timestamp: Date.now() });
-            }, () => {
+            }, (error) => {
+                console.log('[REFRESH] Location access denied:', error.message);
                 setIsLoading(false);
                 setErrors(prev => [...prev, "Location access denied. Using default location."]);
-                socket.emit('searchStops', { timestamp: Date.now() }); // <--- Ensure refresh works with no GPS
+                setLocationPermissionStatus('denied');
+                socket.emit('searchStops', { timestamp: Date.now() });
+            }, {
+                timeout: 10000,
+                enableHighAccuracy: false,
+                maximumAge: 60000
             });
         } else {
-            socket.emit('searchStops', { timestamp: Date.now() }); // <--- Fallback for browsers with no geolocation
+            console.log('[REFRESH] Geolocation not supported, using default location');
+            setLocationPermissionStatus('denied');
+            socket.emit('searchStops', { timestamp: Date.now() });
         }
     };
 
@@ -758,20 +871,54 @@ function App() {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
       window.navigator.standalone === true;
 
+    // Show PWA install prompt when not in standalone mode
+    useEffect(() => {
+        if (!isStandalone && !showPWAInstall && !pwaPromptDismissed) {
+            // Show the prompt immediately when app loads
+            setShowPWAInstall(true);
+        }
+    }, [isStandalone, showPWAInstall, pwaPromptDismissed]);
+
     // In the main App component, add this effect to lock body scroll when the bottom menu is open
     useEffect(() => {
       const root = document.body;
+      const html = document.documentElement;
+      // Handler to prevent touchmove
+      const preventTouch = (e) => {
+        e.preventDefault();
+      };
       if (isPanelExpanded) {
         root.classList.add('overflow-hidden');
+        html.classList.add('overflow-hidden');
+        document.addEventListener('touchmove', preventTouch, { passive: false });
       } else {
         root.classList.remove('overflow-hidden');
+        html.classList.remove('overflow-hidden');
+        document.removeEventListener('touchmove', preventTouch, { passive: false });
       }
-      return () => root.classList.remove('overflow-hidden');
+      return () => {
+        root.classList.remove('overflow-hidden');
+        html.classList.remove('overflow-hidden');
+        document.removeEventListener('touchmove', preventTouch, { passive: false });
+      };
     }, [isPanelExpanded]);
 
     return (
         <div
-            className={`h-screen-fix w-screen overflow-hidden bg-background-primary relative ${isStandalone ? 'pb-8' : ''}`}
+            className={`relative${isStandalone ? ' pb-8' : ''}`}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100vh',
+              overflow: 'hidden',
+              WebkitOverflowScrolling: 'touch',
+              // Prevent iOS rubber banding
+              overscrollBehavior: 'none',
+              MozOverscrollBehavior: 'none',
+              backgroundColor: '#0a0a0a', // Add the dark background color
+            }}
           >
             <AppMap 
               stops={mapStops} 
@@ -897,6 +1044,15 @@ function App() {
             
             <MessagesSection messages={messages} />
             <ErrorsSection errors={errors.filter(e => !e.stopId)} removeError={removeError} />
+            
+            {/* PWA Install Prompt */}
+            <PWAInstallPrompt 
+                isVisible={showPWAInstall} 
+                onClose={() => {
+                    setShowPWAInstall(false);
+                    setPwaPromptDismissed(true);
+                }} 
+            />
         </div>
     );
 }
