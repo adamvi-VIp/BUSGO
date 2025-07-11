@@ -10,7 +10,7 @@ const StopItem = React.forwardRef(({ stop, handleStopSelect, isSelected }, ref) 
             className={`w-full p-3 pr-4 flex items-center gap-4 border-b border-gray-700/60 transition-all duration-200 ${
                 isSelected 
                     ? 'bg-cyan-500/20 border-l-4 border-l-cyan-400 cursor-default' 
-                    : 'bg-transparent hover:bg-cyan-500/10 cursor-pointer'
+                    : 'bg-transparent active:bg-cyan-500/10 cursor-pointer'
             }`}
         >
             <div className="flex-grow min-w-0">

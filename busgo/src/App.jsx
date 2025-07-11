@@ -426,7 +426,15 @@ function App() {
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
-    const [selectedStop, setSelectedStop] = useState(null);
+    const [selectedStop, setSelectedStop] = useState(() => {
+        // Restore selected stop from sessionStorage if available
+        try {
+            const stored = sessionStorage.getItem('selectedStop');
+            return stored ? JSON.parse(stored) : null;
+        } catch {
+            return null;
+        }
+    });
     const [realTimeData, setRealTimeData] = useState(null);
     const [isLoadingRealTime, setIsLoadingRealTime] = useState(false);
     const [messages, setMessages] = useState([]);
@@ -586,6 +594,52 @@ function App() {
         }
     }, []);
 
+    // Persist selectedStop in sessionStorage
+    useEffect(() => {
+        if (selectedStop) {
+            sessionStorage.setItem('selectedStop', JSON.stringify(selectedStop));
+        } else {
+            sessionStorage.removeItem('selectedStop');
+        }
+    }, [selectedStop]);
+
+    // Robust reconnection and visibility handling
+    useEffect(() => {
+        // Helper to re-request stops and departures
+        const reRequestData = () => {
+            // Always refresh stops (location or default)
+            if (userLocation) {
+                socket.emit('searchStops', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
+            } else {
+                socket.emit('searchStops', { timestamp: Date.now() });
+            }
+            // If a stop is selected, re-monitor it
+            if (selectedStop) {
+                socket.emit('requestDepartures', selectedStop.gtfsId);
+            }
+        };
+        // On socket reconnect
+        const onConnect = () => {
+            reRequestData();
+        };
+        socket.on('connect', onConnect);
+        // On tab visibility
+        const onVisibility = () => {
+            if (document.visibilityState === 'visible') {
+                reRequestData();
+            }
+        };
+        document.addEventListener('visibilitychange', onVisibility);
+        // On mount, if selectedStop exists, re-monitor it (in case of reload)
+        if (selectedStop) {
+            socket.emit('requestDepartures', selectedStop.gtfsId);
+        }
+        return () => {
+            socket.off('connect', onConnect);
+            document.removeEventListener('visibilitychange', onVisibility);
+        };
+    }, [selectedStop, userLocation]);
+
     const handleSearchChange = useCallback((event) => {
         const newSearchTerm = event.target.value;
         setSearchTerm(newSearchTerm);
@@ -622,7 +676,8 @@ function App() {
         setIsLoadingRealTime(true);
         setRealTimeData(null);
         socket.emit('requestDepartures', stop.gtfsId);
-        
+        // Persist selected stop immediately
+        sessionStorage.setItem('selectedStop', JSON.stringify(stop));
         setTimeout(() => {
             if (selectedStopRef.current && menuScrollRef.current) {
                 const container = menuScrollRef.current;
@@ -642,6 +697,8 @@ function App() {
         }
         setSelectedStop(null);
         setRealTimeData(null);
+        // Remove from sessionStorage
+        sessionStorage.removeItem('selectedStop');
     };
 
     const removeError = (index) => {
@@ -713,9 +770,7 @@ function App() {
     }, [isPanelExpanded]);
 
     return (
-        <>
-          {showSplash && <SplashScreen progress={progress} isStandalone={isStandalone} />}
-          <div
+        <div
             className={`h-screen-fix w-screen overflow-hidden bg-background-primary relative ${isStandalone ? 'pb-8' : ''}`}
           >
             <AppMap 
@@ -843,7 +898,6 @@ function App() {
             <MessagesSection messages={messages} />
             <ErrorsSection errors={errors.filter(e => !e.stopId)} removeError={removeError} />
         </div>
-        </>
     );
 }
 
