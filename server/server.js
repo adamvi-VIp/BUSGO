@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { isEqual } from 'lodash-es';
+import fs from 'fs';
 
 dotenv.config();
 
@@ -15,7 +16,40 @@ const io = new Server(httpServer, {
   },
 });
 
-const API_KEY = process.env.PID_API_KEY;
+// --- Helper Functions ---
+
+function getApiKeyFromSecrets() {
+    try {
+        // Check if we're running in Koyeb environment with secrets
+        const secretsPath = '/run/secrets/pid_api_key';
+        if (fs.existsSync(secretsPath)) {
+            const apiKey = fs.readFileSync(secretsPath, 'utf8').trim();
+            console.log('[SECRETS] API key loaded from Koyeb secrets');
+            return apiKey;
+        }
+        
+        // Fallback to environment variable
+        const envApiKey = process.env.PID_API_KEY;
+        if (envApiKey) {
+            console.log('[ENV] API key loaded from environment variable');
+            return envApiKey;
+        }
+        
+        console.log('[WARNING] No API key found in secrets or environment variables');
+        return null;
+    } catch (error) {
+        console.error('[ERROR] Failed to read API key from secrets:', error.message);
+        // Fallback to environment variable
+        const envApiKey = process.env.PID_API_KEY;
+        if (envApiKey) {
+            console.log('[ENV] API key loaded from environment variable (fallback)');
+            return envApiKey;
+        }
+        return null;
+    }
+}
+
+const API_KEY = getApiKeyFromSecrets();
 const STOPS_JSON_URL = 'https://data.pid.cz/stops/json/stops.json';
 const POLLING_INTERVAL = 10000; // 10 seconds
 
@@ -354,7 +388,24 @@ const HOST = '0.0.0.0';
 httpServer.listen(PORT, HOST, () => {
     const border = '===================================================';
     const emptyLine = `|                                                 |`;
-    const apiKeyStatus = API_KEY ? 'Loaded Successfully' : 'NOT FOUND - .env file missing or invalid?';
+    
+    // Determine API key source for status display
+    let apiKeyStatus;
+    if (API_KEY) {
+        if (fs.existsSync('/run/secrets/pid_api_key')) {
+            apiKeyStatus = 'Loaded from Koyeb Secrets';
+        } else {
+            apiKeyStatus = 'Loaded from Environment';
+        }
+    } else {
+        apiKeyStatus = 'NOT FOUND - Check secrets or .env file';
+    }
+    
+    // Calculate proper padding for each line to maintain rectangle shape
+    const statusPadding = 28;
+    const listeningPadding = 28;
+    const apiKeyPadding = 28;
+    const pollingPadding = 28;
     
     console.log('\n' + border);
     console.log(emptyLine);
@@ -362,10 +413,10 @@ httpServer.listen(PORT, HOST, () => {
     console.log(emptyLine);
     console.log(border);
     console.log(`|                                                 |`);
-    console.log(`|  > Status:          Running                     |`);
-    console.log(`|  > Listening on:    http://0.0.0.0:${PORT}      |`);
-    console.log(`|  > PID API Key:     ${apiKeyStatus.padEnd(26)}|`);
-    console.log(`|  > Polling Speed:   ${(POLLING_INTERVAL / 1000).toString().padEnd(2)} seconds                 |`);
+    console.log(`|  > Status:          ${'Running'.padEnd(statusPadding)}|`);
+    console.log(`|  > Listening on:    ${`http://0.0.0.0:${PORT}`.padEnd(listeningPadding)}|`);
+    console.log(`|  > PID API Key:     ${apiKeyStatus.padEnd(apiKeyPadding)}|`);
+    console.log(`|  > Polling Speed:   ${`${(POLLING_INTERVAL / 1000)} seconds`.padEnd(pollingPadding)}|`);
     console.log(emptyLine);
     console.log(border + '\n');
 
