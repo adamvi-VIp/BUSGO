@@ -40,6 +40,7 @@ RUN npm ci
 COPY server/ .
 
 # Set production environment for Koyeb
+# This ensures dotenv doesn't load .env file, allowing Koyeb secrets to be used
 ENV NODE_ENV=production
 
 # Final stage - combine frontend and backend

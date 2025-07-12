@@ -20,25 +20,26 @@ const io = new Server(httpServer, {
 
 // --- API Key Loading ---
 
-// This function now cleanly gets the API key from Koyeb secrets (as an environment variable)
+// This function gets the API key from Koyeb secrets (as environment variables)
 // or from your local .env file for development.
 function getApiKey() {
     const apiKey = process.env.PID_API_KEY;
     if (apiKey) {
-        console.log('[INFO] PID API Key loaded successfully.');
+        console.log('[INFO] PID API Key loaded successfully from environment variable.');
         return apiKey;
     }
     
     // Debug information for Koyeb deployment
     console.log('[DEBUG] Environment check:');
     console.log('[DEBUG] NODE_ENV:', process.env.NODE_ENV);
+    console.log('[DEBUG] Total environment variables:', Object.keys(process.env).length);
     console.log('[DEBUG] Available env vars with "PID":', Object.keys(process.env).filter(key => key.includes('PID')));
     console.log('[DEBUG] Available env vars with "API":', Object.keys(process.env).filter(key => key.includes('API')));
     console.log('[DEBUG] Available env vars with "KEY":', Object.keys(process.env).filter(key => key.includes('KEY')));
     
     console.error('[FATAL] PID_API_KEY is not defined. Please set it in Koyeb secrets or in a local .env file.');
-    // In a real production scenario, you might want to exit if the key is missing.
-    // process.exit(1); 
+    console.error('[FATAL] For Koyeb: Create a secret named "PID_API_KEY" and attach it to your service.');
+    console.error('[FATAL] For local dev: Add PID_API_KEY=your_key_here to your .env file.');
     return null;
 }
 
