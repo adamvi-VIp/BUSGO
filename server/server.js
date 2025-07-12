@@ -20,31 +20,29 @@ const io = new Server(httpServer, {
 
 function getApiKeyFromSecrets() {
     try {
-        // Check if we're running in Koyeb environment with secrets
-        const secretsPath = '/run/secrets/pid_api_key';
-        if (fs.existsSync(secretsPath)) {
-            const apiKey = fs.readFileSync(secretsPath, 'utf8').trim();
-            console.log('[SECRETS] API key loaded from Koyeb secrets');
-            return apiKey;
-        }
-        
-        // Fallback to environment variable
-        const envApiKey = process.env.PID_API_KEY;
+        // According to Koyeb docs, secrets are used as environment variables
+        // Check environment variables (case insensitive)
+        const envApiKey = process.env.PID_API_KEY || process.env.pid_api_key;
         if (envApiKey) {
             console.log('[ENV] API key loaded from environment variable');
             return envApiKey;
         }
         
-        console.log('[WARNING] No API key found in secrets or environment variables');
+        // Debug: List all environment variables that might contain the API key
+        console.log('[DEBUG] Checking environment variables...');
+        const envKeys = Object.keys(process.env).filter(key => 
+            key.toLowerCase().includes('pid') || 
+            key.toLowerCase().includes('api') || 
+            key.toLowerCase().includes('key')
+        );
+        if (envKeys.length > 0) {
+            console.log('[DEBUG] Found potential environment variables:', envKeys);
+        }
+        
+        console.log('[WARNING] No API key found in environment variables');
         return null;
     } catch (error) {
-        console.error('[ERROR] Failed to read API key from secrets:', error.message);
-        // Fallback to environment variable
-        const envApiKey = process.env.PID_API_KEY;
-        if (envApiKey) {
-            console.log('[ENV] API key loaded from environment variable (fallback)');
-            return envApiKey;
-        }
+        console.error('[ERROR] Failed to read API key:', error.message);
         return null;
     }
 }
@@ -392,13 +390,12 @@ httpServer.listen(PORT, HOST, () => {
     // Determine API key source for status display
     let apiKeyStatus;
     if (API_KEY) {
-        if (fs.existsSync('/run/secrets/pid_api_key')) {
-            apiKeyStatus = 'Loaded from Koyeb Secrets';
-        } else {
-            apiKeyStatus = 'Loaded from Environment';
-        }
+        // In Koyeb, secrets are environment variables
+        // We can't easily distinguish between secrets and regular env vars
+        // So we'll just show that it's loaded
+        apiKeyStatus = 'Loaded Successfully';
     } else {
-        apiKeyStatus = 'NOT FOUND - Check secrets or .env file';
+        apiKeyStatus = 'NOT FOUND - Check Koyeb secrets or .env file';
     }
     
     // Calculate proper padding for each line to maintain rectangle shape
