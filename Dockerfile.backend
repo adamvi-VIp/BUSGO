@@ -1,26 +1,32 @@
-# Backend Dockerfile
-FROM node:18-alpine
-
-# Set timezone to Prague
-ENV TZ=Europe/Prague
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
-
-WORKDIR /app
-
-# Copy package files
+# ---- Base ----
+# Use a specific Node.js version for consistency
+FROM node:18-alpine AS base
+WORKDIR /usr/src/app
 COPY server/package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# ---- Dependencies ----
+# Install only production dependencies for a smaller image
+FROM base AS deps
+RUN npm install --omit=dev
 
-# Copy source code
+# ---- Build ----
+# In case you have a build step in the future (e.g., TypeScript)
+FROM base AS build
+COPY server/ .
+RUN npm install
+# If you had a build command, it would go here:
+# RUN npm run build
+
+# ---- Release ----
+# This is the final, small, and secure image that will be deployed
+FROM base AS release
+COPY --from=deps /usr/src/app/node_modules ./node_modules
 COPY server/ .
 
-# Create .env file for production
-RUN echo "PORT=3001" > .env && \
-    echo "NODE_ENV=production" >> .env
-
-# Expose port 3001
+# Set the port the app will run on
+ENV PORT=3001
 EXPOSE 3001
 
-CMD ["node", "server.js"] 
+# The command to start your server
+# Using tini helps manage signals and zombie processes correctly
+CMD [ "node", "server.js" ] 

@@ -21,10 +21,12 @@ services:
       dockerfile: Dockerfile.backend
     ports:
       - "3001:3001"
+    # Use 'development' for local runs to ensure .env is loaded by dotenv
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
       - TZ=Europe/Prague
       - PORT=3001
+    # This line makes the .env file available to the container
     env_file:
       - .env
     restart: unless-stopped
