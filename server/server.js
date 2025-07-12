@@ -28,6 +28,14 @@ function getApiKey() {
         console.log('[INFO] PID API Key loaded successfully.');
         return apiKey;
     }
+    
+    // Debug information for Koyeb deployment
+    console.log('[DEBUG] Environment check:');
+    console.log('[DEBUG] NODE_ENV:', process.env.NODE_ENV);
+    console.log('[DEBUG] Available env vars with "PID":', Object.keys(process.env).filter(key => key.includes('PID')));
+    console.log('[DEBUG] Available env vars with "API":', Object.keys(process.env).filter(key => key.includes('API')));
+    console.log('[DEBUG] Available env vars with "KEY":', Object.keys(process.env).filter(key => key.includes('KEY')));
+    
     console.error('[FATAL] PID_API_KEY is not defined. Please set it in Koyeb secrets or in a local .env file.');
     // In a real production scenario, you might want to exit if the key is missing.
     // process.exit(1); 
@@ -285,6 +293,7 @@ httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`| > Status:          Running                     |`);
     console.log(`| > Listening on:    http://localhost:${PORT}      |`);
     console.log(`| > PID API Key:     ${API_KEY ? 'Loaded Successfully' : 'NOT FOUND!'}         |`);
+    console.log(`| > Polling Speed:   ${(POLLING_INTERVAL / 1000)} seconds                  |`);
     console.log('===================================================\n');
     
     cacheStopsData();

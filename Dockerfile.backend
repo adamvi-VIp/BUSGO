@@ -25,6 +25,8 @@ COPY server/ .
 
 # Set the port the app will run on
 ENV PORT=3001
+# Set production environment by default (can be overridden)
+ENV NODE_ENV=production
 EXPOSE 3001
 
 # The command to start your server

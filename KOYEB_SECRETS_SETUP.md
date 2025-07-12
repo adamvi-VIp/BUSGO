@@ -21,6 +21,7 @@ The BusGo backend has been updated to support Koyeb secrets. According to [Koyeb
    - **Name**: `PID_API_KEY`
    - **Value**: Your PID API key from https://api.golemio.cz/
 6. Save the secret
+7. **Important**: Make sure to link this secret to your app/service in the deployment settings
 
 ### Method 2: Using Koyeb CLI
 
@@ -71,6 +72,23 @@ The startup banner will also show:
 - Never commit API keys to your repository
 - Use secrets for production deployments
 - Environment variables are fine for development/testing
+
+## Troubleshooting
+
+### If the API key is not being detected:
+
+1. **Check Secret Linking**: Make sure the secret is properly linked to your app/service in Koyeb
+2. **Verify Secret Name**: The secret must be named exactly `PID_API_KEY` (case sensitive)
+3. **Check Deployment**: Redeploy your app after creating/linking the secret
+4. **View Logs**: Check the application logs for debug information about available environment variables
+5. **Environment Variables**: As an alternative, you can set `PID_API_KEY` as an environment variable in your app settings
+
+### Debug Information
+
+The application will show debug information when the API key is not found:
+- Available environment variables containing "PID", "API", or "KEY"
+- Current NODE_ENV setting
+- Total number of environment variables available
 
 ## Getting a PID API Key
 

@@ -39,6 +39,9 @@ RUN npm ci
 # Copy backend source code
 COPY server/ .
 
+# Set production environment for Koyeb
+ENV NODE_ENV=production
+
 # Final stage - combine frontend and backend
 FROM nginx:alpine
 
