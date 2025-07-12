@@ -6,7 +6,10 @@ import dotenv from 'dotenv';
 import { isEqual } from 'lodash-es';
 import fs from 'fs';
 
-dotenv.config();
+// Only load .env file in development (not in production/Koyeb)
+if (process.env.NODE_ENV !== 'production') {
+    dotenv.config();
+}
 
 const app = express();
 const httpServer = createServer(app);
@@ -30,6 +33,9 @@ function getApiKeyFromSecrets() {
         
         // Debug: List all environment variables that might contain the API key
         console.log('[DEBUG] Checking environment variables...');
+        console.log('[DEBUG] NODE_ENV:', process.env.NODE_ENV);
+        console.log('[DEBUG] Total environment variables:', Object.keys(process.env).length);
+        
         const envKeys = Object.keys(process.env).filter(key => 
             key.toLowerCase().includes('pid') || 
             key.toLowerCase().includes('api') || 
@@ -37,6 +43,14 @@ function getApiKeyFromSecrets() {
         );
         if (envKeys.length > 0) {
             console.log('[DEBUG] Found potential environment variables:', envKeys);
+            // Show the first few characters of each value (for debugging)
+            envKeys.forEach(key => {
+                const value = process.env[key];
+                const preview = value ? `${value.substring(0, 4)}...` : 'undefined';
+                console.log(`[DEBUG] ${key}: ${preview}`);
+            });
+        } else {
+            console.log('[DEBUG] No environment variables found with pid/api/key in name');
         }
         
         console.log('[WARNING] No API key found in environment variables');
