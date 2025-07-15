@@ -4,6 +4,11 @@ import { Server } from 'socket.io';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { isEqual } from 'lodash-es';
+import fs from 'fs/promises';
+
+let tempFileCache = {};
+
+const DEBUG_LOGS = false; // Set to true for verbose logs
 
 // Load .env file only when not in a production environment (like Koyeb)
 if (process.env.NODE_ENV !== 'production') {
@@ -48,6 +53,9 @@ const STOPS_JSON_URL = 'https://data.pid.cz/stops/json/stops.json';
 const POLLING_INTERVAL = 10000; // 10 seconds
 
 let processedStopsCache = [];
+
+// Add a new Map to track rate-limited stations and their backoff timers
+const rateLimitedStations = new Map(); // key: stopId, value: { until: timestamp }
 
 // --- Helper Functions ---
 
@@ -123,6 +131,8 @@ async function fetchDeparturesFromPID(stopId) {
     if (!API_KEY) {
         throw new Error("API key is missing, cannot fetch departures.");
     }
+    const stopName = getStopNameById(stopId);
+    console.log(`[API] Fetching departures from PID API for [${stopId} | ${stopName}]`);
     const url = `https://api.golemio.cz/v2/pid/departureboards?ids[]=${stopId}&limit=30&minutesAfter=180`;
     try {
         const response = await axios.get(url, {
@@ -196,6 +206,36 @@ const activeTimers = new Map(); // key: stopId (shared across users)
 const lastKnownData = new Map(); // key: stopId (shared across users)
 const usersMonitoringStop = new Map(); // key: stopId, value: Set of socketIds
 
+const TEMP_CACHE_FILE = './server/station_cache.json';
+const CACHE_MAX_AGE_MS = 15000; // 15 seconds
+
+// Helper: Load temp cache from file
+async function loadTempCache() {
+    try {
+        const data = await fs.readFile(TEMP_CACHE_FILE, 'utf-8');
+        return JSON.parse(data);
+    } catch (e) {
+        return {};
+    }
+}
+// Helper: Save temp cache to file
+async function saveTempCache(cache) {
+    try {
+        await fs.writeFile(TEMP_CACHE_FILE, JSON.stringify(cache, null, 2), 'utf-8');
+    } catch (e) {
+        console.error('[TEMP CACHE] Failed to write temp cache:', e.message);
+    }
+}
+
+// On startup, load temp cache
+(async () => {
+    tempFileCache = await loadTempCache();
+    // Populate in-memory cache for fast path
+    for (const stopId in tempFileCache) {
+        lastKnownData.set(stopId, tempFileCache[stopId].data);
+    }
+})();
+
 // --- Socket.IO Connection Handling ---
 io.on('connection', (socket) => {
     console.log(`[INFO] User connected: ${socket.id}. Total users: ${io.engine.clientsCount}`);
@@ -255,92 +295,63 @@ io.on('connection', (socket) => {
         if (!stopId) {
             return console.error(`[ERROR] Received request for departures with a NULL stopId from socket ${socket.id}`);
         }
-        
-        // Always fetch the latest data for this stop and send it to the user immediately
-        // Add user to the monitoring set for this stop
         if (!usersMonitoringStop.has(stopId)) {
             usersMonitoringStop.set(stopId, new Set());
         }
         usersMonitoringStop.get(stopId).add(socket.id);
-        // Fetch latest data immediately
         const stopName = getStopNameById(stopId);
-        try {
-            // --- NEW LOGIC: Find all gtfsIds for this stop ---
-            const stopEntry = processedStopsCache.find(stop => stop.gtfsId === stopId || (Array.isArray(stop.gtfsIds) && stop.gtfsIds.includes(stopId)));
-            const gtfsIds = stopEntry && Array.isArray(stopEntry.gtfsIds) && stopEntry.gtfsIds.length > 0
-                ? stopEntry.gtfsIds
-                : [stopId];
-            // Fetch departures for all gtfsIds in parallel
-            const allDepartures = await Promise.all(gtfsIds.map(id => fetchDeparturesFromPID(id)));
-            // Merge departures arrays
-            const mergedDepartures = allDepartures.reduce((acc, data) => {
-                if (Array.isArray(data.departures)) {
-                    acc.push(...data.departures);
-                }
-                return acc;
-            }, []);
-            // Optionally deduplicate by trip id or departure time
-            const dedupedDepartures = Array.from(new Map(mergedDepartures.map(dep => [dep.trip?.id + '-' + (dep.departure_timestamp?.predicted || dep.departure_timestamp?.scheduled), dep])).values());
-            // Sort by soonest
-            dedupedDepartures.sort((a, b) => {
-                const timeA = a.departure_timestamp?.predicted || a.departure_timestamp?.scheduled || 0;
-                const timeB = b.departure_timestamp?.predicted || b.departure_timestamp?.scheduled || 0;
-                return timeA - timeB;
-            });
-            const mergedData = { departures: dedupedDepartures };
-            // Send to this user immediately
-            console.log(`[POLL] Immediate fetch for [${stopId} | ${stopName}] for user ${socket.id}`);
-            socket.emit('departureData', mergedData);
-            // Also update the cache for polling
-            lastKnownData.set(stopId, mergedData);
-        } catch (error) {
-            console.error(`[ERROR] Immediate fetch for [${stopId}] failed:`, error.message);
-            socket.emit('departureError', { stopId, error: 'Failed to fetch new departure data.' });
-        }
-        
-        console.log(`[POLL] User ${socket.id} requested departures for stop [${stopId} | ${stopName}]`);
-        
-        // Add user to the monitoring set for this stop
-        // (already done above)
-        
-        console.log(`[POLL] Currently ${usersMonitoringStop.get(stopId).size} user(s) monitoring stop [${stopId} | ${stopName}]`);
-        
-        // If this is the first user for this stop, start polling
-        if (!activeTimers.has(stopId)) {
-            // --- NEW LOGIC: Find all gtfsIds for this stop ---
-            const stopEntry = processedStopsCache.find(stop => stop.gtfsId === stopId || (Array.isArray(stop.gtfsIds) && stop.gtfsIds.includes(stopId)));
-            const gtfsIds = stopEntry && Array.isArray(stopEntry.gtfsIds) && stopEntry.gtfsIds.length > 0
-                ? stopEntry.gtfsIds
-                : [stopId];
-
-            const fetchData = async () => {
-                try {
-                    // Fetch departures for all gtfsIds in parallel
-                    const allDepartures = await Promise.all(gtfsIds.map(id => fetchDeparturesFromPID(id)));
-                    // Merge departures arrays
-                    const mergedDepartures = allDepartures.reduce((acc, data) => {
-                        if (Array.isArray(data.departures)) {
-                            acc.push(...data.departures);
+        // --- TEMP FILE CACHE LOGIC ---
+        let now = Date.now();
+        let tempEntry = tempFileCache[stopId];
+        if (tempEntry && now - tempEntry.timestamp < CACHE_MAX_AGE_MS) {
+            // Serve from temp file if fresh
+            lastKnownData.set(stopId, tempEntry.data);
+            if (activeTimers.has(stopId)) {
+                console.log(`[TEMP CACHE] [${stopId} | ${stopName}] User ${socket.id} connected to already-polling station. Served fresh cached data from temp file (age: ${((now - tempEntry.timestamp)/1000).toFixed(1)}s)`);
+            } else if (DEBUG_LOGS) {
+                console.log(`[TEMP CACHE] [${stopId} | ${stopName}] Served fresh cached data from temp file (age: ${((now - tempEntry.timestamp)/1000).toFixed(1)}s)`);
+            }
+            socket.emit('departureData', tempEntry.data);
+            // If not polling, start polling for future updates
+            if (!activeTimers.has(stopId)) {
+                if (DEBUG_LOGS) console.log(`[TEMP CACHE] [${stopId} | ${stopName}] No polling active, starting polling for this station.`);
+                const stopEntry = processedStopsCache.find(stop => stop.gtfsId === stopId || (Array.isArray(stop.gtfsIds) && stop.gtfsIds.includes(stopId)));
+                const gtfsIds = stopEntry && Array.isArray(stopEntry.gtfsIds) && stopEntry.gtfsIds.length > 0
+                    ? stopEntry.gtfsIds
+                    : [stopId];
+                const fetchData = async () => {
+                    // If rate-limited, skip fetch until backoff expires
+                    if (rateLimitedStations.has(stopId)) {
+                        const { until } = rateLimitedStations.get(stopId);
+                        if (Date.now() < until) {
+                            console.log(`[POLL] [${stopId}] Skipping fetch due to rate limit until ${new Date(until).toISOString()}`);
+                            return;
+                        } else {
+                            rateLimitedStations.delete(stopId);
                         }
-                        return acc;
-                    }, []);
-                    // Optionally deduplicate by trip id or departure time
-                    const dedupedDepartures = Array.from(new Map(mergedDepartures.map(dep => [dep.trip?.id + '-' + (dep.departure_timestamp?.predicted || dep.departure_timestamp?.scheduled), dep])).values());
-                    // Sort by soonest
-                    dedupedDepartures.sort((a, b) => {
-                        const timeA = a.departure_timestamp?.predicted || a.departure_timestamp?.scheduled || 0;
-                        const timeB = b.departure_timestamp?.predicted || b.departure_timestamp?.scheduled || 0;
-                        return timeA - timeB;
-                    });
-                    const mergedData = { departures: dedupedDepartures };
-                    // Always emit on first fetch, then only if data changed
-                    const isFirstFetch = !lastKnownData.has(stopId);
-                    if (isFirstFetch || (!isEqual(mergedData, lastKnownData.get(stopId)) && activeTimers.has(stopId))) {
+                    }
+                    try {
+                        const allDepartures = await Promise.all(gtfsIds.map(id => fetchDeparturesFromPID(id)));
+                        const mergedDepartures = allDepartures.reduce((acc, data) => {
+                            if (Array.isArray(data.departures)) {
+                                acc.push(...data.departures);
+                            }
+                            return acc;
+                        }, []);
+                        const dedupedDepartures = Array.from(new Map(mergedDepartures.map(dep => [dep.trip?.id + '-' + (dep.departure_timestamp?.predicted || dep.departure_timestamp?.scheduled), dep])).values());
+                        dedupedDepartures.sort((a, b) => {
+                            const timeA = a.departure_timestamp?.predicted || a.departure_timestamp?.scheduled || 0;
+                            const timeB = b.departure_timestamp?.predicted || b.departure_timestamp?.scheduled || 0;
+                            return timeA - timeB;
+                        });
+                        const mergedData = { departures: dedupedDepartures };
+                        lastKnownData.set(stopId, mergedData);
+                        tempFileCache[stopId] = { data: mergedData, timestamp: Date.now() };
+                        await saveTempCache(tempFileCache);
                         // Send to all users monitoring this stop
                         const usersToNotify = usersMonitoringStop.get(stopId);
                         if (usersToNotify && usersToNotify.size > 0) {
-                            console.log(`[POLL] ${isFirstFetch ? 'Initial' : 'Updated'} data for [${stopId} | ${getStopNameById(stopId)}]. Emitting to ${usersToNotify.size} user(s): ${Array.from(usersToNotify).join(', ')}`);
-                            // Emit to all users monitoring this stop
+                            console.log(`[POLL] [${stopId} | ${getStopNameById(stopId)}] New data fetched from PID API, cached to temp file, and emitted to ${usersToNotify.size} user(s)`);
                             usersToNotify.forEach(userSocketId => {
                                 const userSocket = io.sockets.sockets.get(userSocketId);
                                 if (userSocket) {
@@ -348,41 +359,119 @@ io.on('connection', (socket) => {
                                 }
                             });
                         }
-                        lastKnownData.set(stopId, mergedData);
+                    } catch (error) {
+                        // Handle 429 Too Many Requests
+                        if (error.message && error.message.includes('429')) {
+                            const backoffMs = 10000; // 10 seconds
+                            const until = Date.now() + backoffMs;
+                            rateLimitedStations.set(stopId, { until });
+                            console.warn(`[POLL] [${stopId}] Rate limited by PID API. Will retry after ${backoffMs / 1000}s.`);
+                            // Do NOT send error to frontend, just keep lastKnownData
+                            // Users will keep seeing the last data and loading spinner
+                        } else {
+                            // For other errors, log and send error to users
+                            console.error(`[ERROR] Polling for [${stopId}] failed:`, error.message);
+                            const usersToNotify = usersMonitoringStop.get(stopId);
+                            if (usersToNotify && usersToNotify.size > 0) {
+                                usersToNotify.forEach(userSocketId => {
+                                    const userSocket = io.sockets.sockets.get(userSocketId);
+                                    if (userSocket) {
+                                        userSocket.emit('departureError', { stopId, error: 'Failed to fetch new departure data.' });
+                                    }
+                                });
+                            }
+                        }
                     }
-                } catch (error) {
-                    console.error(`[ERROR] Polling for [${stopId}] failed:`, error.message);
-                    // Send error to all users monitoring this stop
+                };
+                fetchData();
+                const intervalId = setInterval(fetchData, POLLING_INTERVAL);
+                activeTimers.set(stopId, { intervalId });
+            }
+            return;
+        }
+        // If we have cached data in memory, send it immediately
+        const cachedData = lastKnownData.get(stopId);
+        if (cachedData) {
+            if (DEBUG_LOGS) console.log(`[MEM CACHE] [${stopId} | ${stopName}] Served cached data from memory (not temp file)`);
+            socket.emit('departureData', cachedData);
+        } else {
+            console.log(`[POLL] [${stopId} | ${stopName}] No cached data available, user ${socket.id} will see loading`);
+        }
+        // If this is the first user for this stop, start polling
+        if (!activeTimers.has(stopId)) {
+            const stopEntry = processedStopsCache.find(stop => stop.gtfsId === stopId || (Array.isArray(stop.gtfsIds) && stop.gtfsIds.includes(stopId)));
+            const gtfsIds = stopEntry && Array.isArray(stopEntry.gtfsIds) && stopEntry.gtfsIds.length > 0
+                ? stopEntry.gtfsIds
+                : [stopId];
+            const fetchData = async () => {
+                // If rate-limited, skip fetch until backoff expires
+                if (rateLimitedStations.has(stopId)) {
+                    const { until } = rateLimitedStations.get(stopId);
+                    if (Date.now() < until) {
+                        console.log(`[POLL] [${stopId}] Skipping fetch due to rate limit until ${new Date(until).toISOString()}`);
+                        return;
+                    } else {
+                        rateLimitedStations.delete(stopId);
+                    }
+                }
+                try {
+                    const allDepartures = await Promise.all(gtfsIds.map(id => fetchDeparturesFromPID(id)));
+                    const mergedDepartures = allDepartures.reduce((acc, data) => {
+                        if (Array.isArray(data.departures)) {
+                            acc.push(...data.departures);
+                        }
+                        return acc;
+                    }, []);
+                    const dedupedDepartures = Array.from(new Map(mergedDepartures.map(dep => [dep.trip?.id + '-' + (dep.departure_timestamp?.predicted || dep.departure_timestamp?.scheduled), dep])).values());
+                    dedupedDepartures.sort((a, b) => {
+                        const timeA = a.departure_timestamp?.predicted || a.departure_timestamp?.scheduled || 0;
+                        const timeB = b.departure_timestamp?.predicted || b.departure_timestamp?.scheduled || 0;
+                        return timeA - timeB;
+                    });
+                    const mergedData = { departures: dedupedDepartures };
+                    lastKnownData.set(stopId, mergedData);
+                    tempFileCache[stopId] = { data: mergedData, timestamp: Date.now() };
+                    await saveTempCache(tempFileCache);
+                    // Send to all users monitoring this stop
                     const usersToNotify = usersMonitoringStop.get(stopId);
                     if (usersToNotify && usersToNotify.size > 0) {
+                        console.log(`[POLL] (robust) New data for [${stopId} | ${getStopNameById(stopId)}]. Emitting to ${usersToNotify.size} user(s)`);
                         usersToNotify.forEach(userSocketId => {
                             const userSocket = io.sockets.sockets.get(userSocketId);
                             if (userSocket) {
-                                userSocket.emit('departureError', { stopId, error: 'Failed to fetch new departure data.' });
+                                userSocket.emit('departureData', mergedData);
                             }
                         });
                     }
-                    // Stop polling on error
-                    if (activeTimers.has(stopId)) {
-                        clearInterval(activeTimers.get(stopId).intervalId);
-                        activeTimers.delete(stopId);
-                        lastKnownData.delete(stopId);
+                } catch (error) {
+                    // Handle 429 Too Many Requests
+                    if (error.message && error.message.includes('429')) {
+                        const backoffMs = 10000; // 10 seconds
+                        const until = Date.now() + backoffMs;
+                        rateLimitedStations.set(stopId, { until });
+                        console.warn(`[POLL] [${stopId}] Rate limited by PID API. Will retry after ${backoffMs / 1000}s.`);
+                        // Do NOT send error to frontend, just keep lastKnownData
+                        // Users will keep seeing the last data and loading spinner
+                    } else {
+                        // For other errors, log and send error to users
+                        console.error(`[ERROR] Polling for [${stopId}] failed:`, error.message);
+                        const usersToNotify = usersMonitoringStop.get(stopId);
+                        if (usersToNotify && usersToNotify.size > 0) {
+                            usersToNotify.forEach(userSocketId => {
+                                const userSocket = io.sockets.sockets.get(userSocketId);
+                                if (userSocket) {
+                                    userSocket.emit('departureError', { stopId, error: 'Failed to fetch new departure data.' });
+                                }
+                            });
+                        }
                     }
                 }
             };
-
-            fetchData(); // Initial fetch
+            fetchData();
             const intervalId = setInterval(fetchData, POLLING_INTERVAL);
             activeTimers.set(stopId, { intervalId });
-        } else {
-            // Stop is already being polled, send current data immediately
-            const currentData = lastKnownData.get(stopId);
-            if (currentData) {
-                // Use stopName from above
-                console.log(`[POLL] Stop [${stopId} | ${stopName}] already being polled. Sending current data to user ${socket.id}`);
-                socket.emit('departureData', currentData);
-            }
         }
+        // If already polling, do nothing (data will be sent on next poll)
     });
 
     socket.on('stopDepartureMonitoring', (stopId) => {
@@ -395,10 +484,10 @@ io.on('connection', (socket) => {
             
             if (stillMonitoring > 0) {
                 const stopName = getStopNameById(stopId);
-                console.log(`[POLL] User ${socket.id} stopped monitoring stop [${stopId} | ${stopName}]. Still ${stillMonitoring} user(s) monitoring this stop.`);
+                if (DEBUG_LOGS) console.log(`[POLL] [${stopId} | ${stopName}] User ${socket.id} stopped monitoring. Still ${stillMonitoring} user(s) monitoring this stop.`);
             } else {
                 const stopName = getStopNameById(stopId);
-                console.log(`[POLL] User ${socket.id} stopped monitoring stop [${stopId} | ${stopName}]. No users are monitoring this stop now.`);
+                console.log(`[POLL] [${stopId} | ${stopName}] No users are monitoring this stop now. Polling stopped and cache cleared.`);
                 
                 // Stop polling if no users are monitoring this stop
                 if (activeTimers.has(stopId)) {
@@ -412,7 +501,7 @@ io.on('connection', (socket) => {
             }
         } else {
             const stopName = getStopNameById(stopId);
-            console.log(`[POLL] User ${socket.id} tried to stop monitoring stop [${stopId} | ${stopName}] but was not monitoring it.`);
+            if (DEBUG_LOGS) console.log(`[POLL] [${stopId} | ${stopName}] User ${socket.id} tried to stop monitoring but was not monitoring it.`);
         }
     });
 

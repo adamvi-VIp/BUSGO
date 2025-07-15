@@ -221,7 +221,7 @@ const Arrival = ({ arrival }) => {
 
     const formatRemainingTime = (ms) => {
         if (ms === null) return 'N/A';
-        if (ms <= 0) return "Departed";
+        if (ms <= 0) return '';
         const totalSeconds = Math.floor(ms / 1000);
         const hours = Math.floor(totalSeconds / 3600);
         const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -356,7 +356,7 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) =>
 
                     {/* Only this div scrolls */}
                     <div className="overflow-y-auto p-4 flex-1" style={{ maxHeight: 'calc(100vh - 340px)' }}>
-                        {isLoadingRealTime && <LoadingScreen />}
+                        {isLoadingRealTime && !realTimeData && <LoadingScreen />}
                         {error && <div className="text-center text-red-400 p-4 bg-red-500/10 rounded-xl text-sm">{error.error}</div>}
                         {realTimeData && (
                             hasDepartures ? (
