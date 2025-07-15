@@ -47,7 +47,7 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
         ? [userLocation.latitude, userLocation.longitude]
         : [50.0755, 14.4378]; // Prague center fallback
 
-    const centerPosition = selectedStop && selectedStop.lat && selectedStop.lon
+    const centerPosition = selectedStop && selectedStop.lat !== undefined && selectedStop.lon !== undefined && !isNaN(selectedStop.lat) && !isNaN(selectedStop.lon)
         ? [selectedStop.lat, selectedStop.lon]
         : mapPosition;
 
@@ -938,6 +938,69 @@ function App() {
             setShowPWAInstall(true);
         }
     }, [isStandalone, showPWAInstall, pwaPromptDismissed]);
+
+    // Persistent station modal memory
+    const STATION_CACHE_KEY = 'lastOpenedStation';
+    const STATION_CACHE_MAX_AGE = 10 * 60 * 1000; // 30 minutes in ms
+
+    // On mount, restore station if timestamp is recent
+    useEffect(() => {
+        try {
+            const cached = localStorage.getItem(STATION_CACHE_KEY);
+            if (cached) {
+                const { stop, openedAt } = JSON.parse(cached);
+                if (stop && openedAt && Date.now() - openedAt < STATION_CACHE_MAX_AGE) {
+                    setSelectedStop(stop);
+                    // Fetch stops around user's location (if available)
+                    const isValidLatLon = stop.lat !== undefined && stop.lon !== undefined && !isNaN(stop.lat) && !isNaN(stop.lon);
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(position => {
+                            const { latitude, longitude } = position.coords;
+                            setUserLocation({ latitude, longitude });
+                            socket.emit('searchStops', { lat: latitude, lon: longitude, timestamp: Date.now() });
+                            // After user's location, also search around the cached stop if valid
+                            if (isValidLatLon) {
+                                setTimeout(() => {
+                                    socket.emit('searchStops', { lat: stop.lat, lon: stop.lon, timestamp: Date.now(), source: 'map-movement' });
+                                }, 500);
+                            }
+                        }, () => {
+                            // If location fails, search around default location, then cached stop if valid
+                            const DEFAULT_LAT = 50.0874654;
+                            const DEFAULT_LON = 14.4212535;
+                            socket.emit('searchStops', { lat: DEFAULT_LAT, lon: DEFAULT_LON, timestamp: Date.now() });
+                            if (isValidLatLon) {
+                                setTimeout(() => {
+                                    socket.emit('searchStops', { lat: stop.lat, lon: stop.lon, timestamp: Date.now(), source: 'map-movement' });
+                                }, 500);
+                            }
+                        });
+                    } else {
+                        // No geolocation support: search around default location, then cached stop if valid
+                        const DEFAULT_LAT = 50.0874654;
+                        const DEFAULT_LON = 14.4212535;
+                        socket.emit('searchStops', { lat: DEFAULT_LAT, lon: DEFAULT_LON, timestamp: Date.now() });
+                        if (isValidLatLon) {
+                            setTimeout(() => {
+                                socket.emit('searchStops', { lat: stop.lat, lon: stop.lon, timestamp: Date.now(), source: 'map-movement' });
+                            }, 500);
+                        }
+                    }
+                } else {
+                    localStorage.removeItem(STATION_CACHE_KEY);
+                }
+            }
+        } catch {}
+    }, []);
+
+    // When station modal is opened, cache with timestamp
+    useEffect(() => {
+        if (selectedStop) {
+            localStorage.setItem(STATION_CACHE_KEY, JSON.stringify({ stop: selectedStop, openedAt: Date.now() }));
+        } else {
+            localStorage.removeItem(STATION_CACHE_KEY);
+        }
+    }, [selectedStop]);
 
     return (
         <div

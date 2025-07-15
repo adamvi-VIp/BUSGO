@@ -151,6 +151,9 @@ async function fetchDeparturesFromPID(stopId) {
             return { departures: [] };
         }
     } catch (error) {
+        if (error.response && error.response.status === 429) {
+            console.warn(`[API LIMIT] PID API rate limit (429) for [${stopId} | ${stopName}]`);
+        }
         if (error.response) {
             console.error(`[${stopId}] PID API Error: ${error.response.status} ${error.response.statusText}`);
         } else {
@@ -164,7 +167,6 @@ async function cacheStopsData() {
     try {
         console.log(`[CACHE] Attempting to download and process stops data...`);
         const response = await axios.get(STOPS_JSON_URL);
-        
         if (response.data && Array.isArray(response.data.stopGroups)) {
             const allStops = response.data.stopGroups.flatMap(group =>
                 group.stops.map(stop => ({
@@ -172,7 +174,6 @@ async function cacheStopsData() {
                     groupName: group.name,
                 }))
             );
-            
             processedStopsCache = allStops
                 .filter(stop => stop.gtfsIds && stop.gtfsIds[0])
                 .map((stop, index) => {
@@ -190,13 +191,14 @@ async function cacheStopsData() {
                         lines: stop.lines || []
                     };
                 });
-
             console.log(`[CACHE] Successfully cached and processed ${processedStopsCache.length} stops.`);
         } else {
             throw new Error("Invalid data structure received from stops URL.");
         }
-
     } catch (error) {
+        if (error.response && error.response.status === 429) {
+            console.warn(`[API LIMIT] PID API rate limit (429) for stops data`);
+        }
         console.error('[CACHE] Failed to cache stops data:', error.message);
     }
 }
@@ -365,7 +367,7 @@ io.on('connection', (socket) => {
                             const backoffMs = 10000; // 10 seconds
                             const until = Date.now() + backoffMs;
                             rateLimitedStations.set(stopId, { until });
-                            console.warn(`[POLL] [${stopId}] Rate limited by PID API. Will retry after ${backoffMs / 1000}s.`);
+                            console.warn(`[API LIMIT] [POLL] PID API rate limit (429) for [${stopId} | ${getStopNameById(stopId)}]. Will retry after ${backoffMs / 1000}s.`);
                             // Do NOT send error to frontend, just keep lastKnownData
                             // Users will keep seeing the last data and loading spinner
                         } else {
@@ -449,7 +451,7 @@ io.on('connection', (socket) => {
                         const backoffMs = 10000; // 10 seconds
                         const until = Date.now() + backoffMs;
                         rateLimitedStations.set(stopId, { until });
-                        console.warn(`[POLL] [${stopId}] Rate limited by PID API. Will retry after ${backoffMs / 1000}s.`);
+                        console.warn(`[API LIMIT] [POLL] PID API rate limit (429) for [${stopId} | ${getStopNameById(stopId)}]. Will retry after ${backoffMs / 1000}s.`);
                         // Do NOT send error to frontend, just keep lastKnownData
                         // Users will keep seeing the last data and loading spinner
                     } else {
