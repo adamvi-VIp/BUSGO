@@ -129,13 +129,13 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
                             icon={L.divIcon({
                                 className: `custom-stop-marker ${selectedStop && selectedStop.gtfsId === stop.gtfsId ? 'opacity-50' : ''}`,
                                 html: `
-                                    <div style="position: relative; width: 29px; height: 29px; display: flex; align-items: center; justify-content: center;">
-                                        <img src='${stationBoxIcon}' alt='Station' style="width: 29px; height: 29px; display: block; opacity: 1;" />
-                                        ${stationBoxLoaded ? `<span style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; color: white; text-shadow: 0 1px 4px rgba(0,0,0,0.7); pointer-events: none;">${stop.platform || 'P'}</span>` : ''}
+                                    <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
+                                        <img src='${stationBoxIcon}' alt='Station' style="width: 34px; height: 34px; display: block; opacity: 1;" />
+                                        ${stationBoxLoaded ? `<span style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; color: white; text-shadow: 0 1px 4px rgba(0,0,0,0.7); pointer-events: none;">${stop.platform || 'P'}</span>` : ''}
                                     </div>
                                 `,
-                                iconSize: [29, 29],
-                                iconAnchor: [14.5, 14.5]
+                                iconSize: [34, 34],
+                                iconAnchor: [17, 17]
                             })}
                             eventHandlers={{
                                 click: () => {
@@ -268,9 +268,9 @@ const Arrival = ({ arrival }) => {
     const formattedTime = formatRemainingTime(remainingTime);
 
     return (
-        <div className={`flex justify-between items-center p-3 mb-2 rounded-lg border-b border-gray-800 transition-all duration-300 overflow-x-hidden`}>
-            <div className="flex items-center gap-3 mb-1 min-w-0">
-                <span className="px-3 py-1 rounded-md font-bold text-center text-sm shadow-md flex-shrink-0 bg-yellow-500 text-black">
+        <div className={`flex justify-between items-center p-3 mb-2 rounded-lg border-b border-gray-800 transition-all duration-300 overflow-x-hidden -ml-1`}>
+            <div className="flex items-center gap-4 mb-1 min-w-0">
+                <span className="px-[10px] py-1 rounded-md font-bold text-center text-sm shadow-md flex-shrink-0 bg-yellow-500 text-black">
                     {route.short_name}
                 </span>
                 <div className="flex-1 min-w-0">
@@ -278,7 +278,7 @@ const Arrival = ({ arrival }) => {
                         {trip.headsign}
                     </span>
                     {delayString && (
-                        <div className="text-xs text-gray-400 flex items-center gap-2 mt-1">
+                        <div className="text-sm text-gray-400 flex items-center gap-2 mt-0">
                             <span className={`font-semibold ${delayColor}`}>{delayString}</span>
                             <img
                                 src={iceIcon}
@@ -512,6 +512,37 @@ function App() {
     const selectedStopRef = useRef(null);
     const menuScrollRef = useRef(null);
     const programmaticMoveRef = useRef(false);
+    const hasEmittedDefaultRef = useRef(false);
+    const departureTimeoutRef = useRef(null);
+    const lastRequestedStopIdRef = useRef(null);
+
+    // Add a function to request the latest data for the monitored station
+    const requestLatestMonitoredStation = useCallback(() => {
+        try {
+            const stored = sessionStorage.getItem('selectedStop');
+            if (stored) {
+                const stop = JSON.parse(stored);
+                if (stop && stop.gtfsId) {
+                    // Prevent duplicate emits for the same station
+                    if (lastRequestedStopIdRef.current === stop.gtfsId && isLoadingRealTime) return;
+                    lastRequestedStopIdRef.current = stop.gtfsId;
+                    setIsLoadingRealTime(true);
+                    setRealTimeData(null);
+                    console.log('[REOPEN] Requesting latest data for monitored station:', stop.name, stop.gtfsId);
+                    socket.emit('requestDepartures', stop.gtfsId);
+                    if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
+                    departureTimeoutRef.current = setTimeout(() => {
+                        if (isLoadingRealTime) {
+                            setIsLoadingRealTime(false);
+                            setErrors(prev => [...prev, 'Departure data loading timed out after reconnect. Please try again.']);
+                        }
+                    }, 10000);
+                }
+            }
+        } catch (e) {
+            // Ignore
+        }
+    }, [isLoadingRealTime]);
 
     useEffect(() => {
         /**
@@ -553,6 +584,7 @@ function App() {
         };
 
         const handleDepartureData = (data) => {
+            if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
             setRealTimeData(data);
             setIsLoadingRealTime(false);
         };
@@ -561,6 +593,7 @@ function App() {
             setIsLoading(false);
         };
         const handleDepartureError = (error) => {
+            if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
             setErrors(prev => [...prev, error.error || `Failed to get real-time data.`]);
             setIsLoadingRealTime(false);
         };
@@ -579,20 +612,26 @@ function App() {
     }, []);
 
     useEffect(() => {
+        let hasEmittedInitialStops = false;
+        function emitInitialStops(payload) {
+            if (!hasEmittedInitialStops) {
+                console.log('Emitting searchStops from App.jsx', payload);
+                socket.emit('searchStops', payload);
+                hasEmittedInitialStops = true;
+            }
+        }
         if (navigator.geolocation && !hasFetchedForLocation.current) {
             hasFetchedForLocation.current = true;
             console.log('[INIT] Fetching location and stops...');
-            
             // Check location permission status first
             navigator.permissions.query({ name: 'geolocation' }).then(permissionStatus => {
                 setLocationPermissionStatus(permissionStatus.state);
-                
                 if (permissionStatus.state === 'denied') {
                     // Permission already denied, use default location
                     console.log('[INIT] Location permission already denied, using default location');
                     setIsLoading(false);
                     setErrors(prev => [...prev, "Location access denied. Using default location."]);
-                    socket.emit('searchStops', { timestamp: Date.now() });
+                    emitInitialStops({ timestamp: Date.now() });
                     setLocationReady(true);
                     setLocationPermissionStatus('denied');
                 } else {
@@ -600,7 +639,7 @@ function App() {
                     navigator.geolocation.getCurrentPosition(position => {
                         const { latitude, longitude } = position.coords;
                         setUserLocation({ latitude, longitude });
-                        socket.emit('searchStops', { lat: latitude, lon: longitude, timestamp: Date.now() });
+                        emitInitialStops({ lat: latitude, lon: longitude, timestamp: Date.now() });
                         setShouldUpdateCamera(true);
                         setTimeout(() => setShouldUpdateCamera(false), 100);
                         setLocationReady(true);
@@ -609,7 +648,7 @@ function App() {
                         console.log('[INIT] Location access denied:', error.message);
                         setIsLoading(false);
                         setErrors(prev => [...prev, "Location access denied. Using default location."]);
-                        socket.emit('searchStops', { timestamp: Date.now() });
+                        emitInitialStops({ timestamp: Date.now() });
                         setLocationReady(true);
                         setLocationPermissionStatus('denied');
                     }, {
@@ -623,7 +662,7 @@ function App() {
                 navigator.geolocation.getCurrentPosition(position => {
                     const { latitude, longitude } = position.coords;
                     setUserLocation({ latitude, longitude });
-                    socket.emit('searchStops', { lat: latitude, lon: longitude, timestamp: Date.now() });
+                    emitInitialStops({ lat: latitude, lon: longitude, timestamp: Date.now() });
                     setShouldUpdateCamera(true);
                     setTimeout(() => setShouldUpdateCamera(false), 100);
                     setLocationReady(true);
@@ -632,7 +671,7 @@ function App() {
                     console.log('[INIT] Location access denied:', error.message);
                     setIsLoading(false);
                     setErrors(prev => [...prev, "Location access denied. Using default location."]);
-                    socket.emit('searchStops', { timestamp: Date.now() });
+                    emitInitialStops({ timestamp: Date.now() });
                     setLocationReady(true);
                     setLocationPermissionStatus('denied');
                 }, {
@@ -675,14 +714,22 @@ function App() {
             
             // Preserve current search state on reconnect
             if (searchTerm && searchTerm.length > 0) {
-                // Re-search for the current search term
+                console.log('Emitting searchStops from App.jsx', { query: searchTerm, timestamp: Date.now() });
                 socket.emit('searchStops', { query: searchTerm, timestamp: Date.now() });
             } else {
                 // Show nearby stations (location or default)
                 if (userLocation && locationPermissionStatus === 'granted') {
-                    socket.emit('searchStops', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
+                    if (!hasEmittedDefaultRef.current) {
+                        console.log('Emitting searchStops from App.jsx', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
+                        socket.emit('searchStops', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
+                        hasEmittedDefaultRef.current = true;
+                    }
                 } else if (locationPermissionStatus === 'denied') {
-                    socket.emit('searchStops', { timestamp: Date.now() });
+                    if (!hasEmittedDefaultRef.current) {
+                        console.log('Emitting searchStops from App.jsx', { timestamp: Date.now() });
+                        socket.emit('searchStops', { timestamp: Date.now() });
+                        hasEmittedDefaultRef.current = true;
+                    }
                 }
                 // If locationPermissionStatus is still 'pending', don't request anything yet
             }
@@ -715,6 +762,7 @@ function App() {
         const onVisibility = () => {
             if (document.visibilityState === 'visible') {
                 reRequestData();
+                requestLatestMonitoredStation();
             }
         };
         document.addEventListener('visibilitychange', onVisibility);
@@ -728,7 +776,7 @@ function App() {
             socket.off('connect', onConnect);
             document.removeEventListener('visibilitychange', onVisibility);
         };
-            }, [userLocation, searchTerm, locationPermissionStatus]); // Added locationPermissionStatus to dependencies
+            }, [userLocation, searchTerm, locationPermissionStatus, selectedStop, requestLatestMonitoredStation]); // Added locationPermissionStatus to dependencies
 
     const handleSearchChange = useCallback((event) => {
         const newSearchTerm = event.target.value;
@@ -746,12 +794,21 @@ function App() {
         debounceTimeout.current = setTimeout(() => {
             setIsLoading(true);
             if (newSearchTerm.length > 0) {
+                 console.log('Emitting searchStops from App.jsx', { query: newSearchTerm, timestamp: Date.now() });
                  socket.emit('searchStops', { query: newSearchTerm, timestamp: Date.now() });
             } else {
                 if (userLocation && locationPermissionStatus === 'granted') {
-                    socket.emit('searchStops', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
+                    if (!hasEmittedDefaultRef.current) {
+                        console.log('Emitting searchStops from App.jsx', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
+                        socket.emit('searchStops', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
+                        hasEmittedDefaultRef.current = true;
+                    }
                 } else if (locationPermissionStatus === 'denied') {
-                    socket.emit('searchStops', { timestamp: Date.now() });
+                    if (!hasEmittedDefaultRef.current) {
+                        console.log('Emitting searchStops from App.jsx', { timestamp: Date.now() });
+                        socket.emit('searchStops', { timestamp: Date.now() });
+                        hasEmittedDefaultRef.current = true;
+                    }
                 }
                 // If locationPermissionStatus is still 'pending', don't request anything yet
             }
@@ -772,14 +829,14 @@ function App() {
         setIsLoadingRealTime(true);
         setRealTimeData(null);
         socket.emit('requestDepartures', stop.gtfsId);
-        // Set timeout for loading state
-        setTimeout(() => {
+        lastRequestedStopIdRef.current = stop.gtfsId;
+        if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
+        departureTimeoutRef.current = setTimeout(() => {
             if (isLoadingRealTime) {
-                console.log('[TIMEOUT] Departure data loading timeout, resetting state');
                 setIsLoadingRealTime(false);
                 setErrors(prev => [...prev, 'Departure data loading timed out. Please try again.']);
             }
-        }, 10000); // 10 second timeout
+        }, 10000);
         // Persist selected stop immediately
         sessionStorage.setItem('selectedStop', JSON.stringify(stop));
         setTimeout(() => {
@@ -821,12 +878,14 @@ function App() {
                 const { latitude, longitude } = position.coords;
                 setUserLocation({ latitude, longitude });
                 setLocationPermissionStatus('granted');
+                console.log('Emitting searchStops from App.jsx', { lat: latitude, lon: longitude, timestamp: Date.now() });
                 socket.emit('searchStops', { lat: latitude, lon: longitude, timestamp: Date.now() });
             }, (error) => {
                 console.log('[REFRESH] Location access denied:', error.message);
                 setIsLoading(false);
                 setErrors(prev => [...prev, "Location access denied. Using default location."]);
                 setLocationPermissionStatus('denied');
+                console.log('Emitting searchStops from App.jsx', { timestamp: Date.now() });
                 socket.emit('searchStops', { timestamp: Date.now() });
             }, {
                 timeout: 10000,
@@ -836,6 +895,7 @@ function App() {
         } else {
             console.log('[REFRESH] Geolocation not supported, using default location');
             setLocationPermissionStatus('denied');
+            console.log('Emitting searchStops from App.jsx', { timestamp: Date.now() });
             socket.emit('searchStops', { timestamp: Date.now() });
         }
     };
@@ -879,60 +939,36 @@ function App() {
         }
     }, [isStandalone, showPWAInstall, pwaPromptDismissed]);
 
-    // In the main App component, add this effect to lock body scroll when the bottom menu is open
-    useEffect(() => {
-      const root = document.body;
-      const html = document.documentElement;
-      // Handler to prevent touchmove
-      const preventTouch = (e) => {
-        e.preventDefault();
-      };
-      if (isPanelExpanded) {
-        root.classList.add('overflow-hidden');
-        html.classList.add('overflow-hidden');
-        document.addEventListener('touchmove', preventTouch, { passive: false });
-      } else {
-        root.classList.remove('overflow-hidden');
-        html.classList.remove('overflow-hidden');
-        document.removeEventListener('touchmove', preventTouch, { passive: false });
-      }
-      return () => {
-        root.classList.remove('overflow-hidden');
-        html.classList.remove('overflow-hidden');
-        document.removeEventListener('touchmove', preventTouch, { passive: false });
-      };
-    }, [isPanelExpanded]);
-
     return (
         <div
             className={`relative${isStandalone ? ' pb-8' : ''}`}
             style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              width: '100vw',
-              height: '100vh',
-              overflow: 'hidden',
-              WebkitOverflowScrolling: 'touch',
-              // Prevent iOS rubber banding
-              overscrollBehavior: 'none',
-              MozOverscrollBehavior: 'none',
-              backgroundColor: '#0a0a0a', // Add the dark background color
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                width: '100vw',
+                height: '100vh',
+                overflow: 'hidden',
+                WebkitOverflowScrolling: 'touch',
+                // Prevent iOS rubber banding
+                overscrollBehavior: 'none',
+                MozOverscrollBehavior: 'none',
+                backgroundColor: '#0a0a0a', // Add the dark background color
             }}
-          >
+        >
             <AppMap 
-              stops={mapStops} 
-              userLocation={userLocation} 
-              onStopSelect={handleStopSelect} 
-              selectedStop={selectedStop}
-              socket={socket}
-              isRefreshing={isRefreshing}
-              shouldUpdateCamera={shouldUpdateCamera}
-              programmaticMoveRef={programmaticMoveRef}
-              setMapReady={setMapReady}
-              stationBoxLoaded={stationBoxLoaded} // <-- pass as prop
+                stops={mapStops} 
+                userLocation={userLocation} 
+                onStopSelect={handleStopSelect} 
+                selectedStop={selectedStop}
+                socket={socket}
+                isRefreshing={isRefreshing}
+                shouldUpdateCamera={shouldUpdateCamera}
+                programmaticMoveRef={programmaticMoveRef}
+                setMapReady={setMapReady}
+                stationBoxLoaded={stationBoxLoaded} // <-- pass as prop
             />
-        
+
             <header className="absolute top-0 left-0 w-full z-20 p-4 pointer-events-none">
                 <div className="max-w-xl w-full mx-auto flex flex-col items-center gap-3 pointer-events-auto">
                     <h1 className="m-0 font-bold text-3xl text-white tracking-tighter font-onest" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.7)' }}>
@@ -953,8 +989,10 @@ function App() {
                                     setIsPanelExpanded(false);
                                     setIsLoading(true);
                                     if (userLocation) {
+                                        console.log('Emitting searchStops from App.jsx', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
                                         socket.emit('searchStops', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
                                     } else {
+                                        console.log('Emitting searchStops from App.jsx', { timestamp: Date.now() });
                                         socket.emit('searchStops', { timestamp: Date.now() });
                                     }
                                 }}
@@ -1001,7 +1039,7 @@ function App() {
                     </div>
 
                     <div className="flex-grow overflow-y-auto" ref={menuScrollRef}>
-                         {isLoading ? (
+                        {isLoading ? (
                             <LoadingScreen />
                         ) : currentCards.length > 0 ? (
                             currentCards.map((stop) => (
@@ -1022,7 +1060,7 @@ function App() {
 
                     {totalPages > 1 && isPanelExpanded && (
                         <div className={`flex-shrink-0 border-t border-gray-700/60${isStandalone ? ' pb-8' : ''}`}>
-                             <Pagination
+                            <Pagination
                                 currentPage={currentPage}
                                 totalPages={totalPages}
                                 handlePageChange={(page) => setCurrentPage(page)}
@@ -1033,7 +1071,7 @@ function App() {
             </div>
 
             {selectedStop && (
-                 <StopModal
+                <StopModal
                     stop={selectedStop}
                     onClose={handleCloseModal}
                     realTimeData={realTimeData}
@@ -1041,10 +1079,8 @@ function App() {
                     error={errors.find(e => e.stopId === selectedStop.gtfsId)}
                 />
             )}
-            
             <MessagesSection messages={messages} />
             <ErrorsSection errors={errors.filter(e => !e.stopId)} removeError={removeError} />
-            
             {/* PWA Install Prompt */}
             <PWAInstallPrompt 
                 isVisible={showPWAInstall} 

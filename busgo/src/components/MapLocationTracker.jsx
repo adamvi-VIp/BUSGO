@@ -53,12 +53,14 @@ const MapLocationTracker = ({ socket, programmaticMoveRef }) => {
     const handleUpdateStations = () => {
         if (pendingCenter) {
             lastCenterRef.current = pendingCenter;
-            socket.emit('searchStops', {
+            const payload = {
                 lat: pendingCenter[0],
                 lon: pendingCenter[1],
                 timestamp: Date.now(),
                 source: 'map-movement'
-            });
+            };
+            console.log('Emitting searchStops from MapLocationTracker', payload);
+            socket.emit('searchStops', payload);
             setShowUpdateButton(false);
         }
     };
