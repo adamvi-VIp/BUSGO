@@ -931,8 +931,8 @@ function App() {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
       window.navigator.standalone === true;
 
-    // Check for the native bridge. This is the most reliable way.
-    const isAndroidApp = !!window.AndroidBridge;
+    // This check is now more reliable because the native code injects the variable.
+    const isAndroidApp = !!window.IS_ANDROID_APP;
 
     // Show PWA install prompt when not in standalone mode and not in Android app
     useEffect(() => {

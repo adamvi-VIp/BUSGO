@@ -87,8 +87,8 @@ const MapLocationTracker = ({ socket, programmaticMoveRef }) => {
         }
     }, [handleLocationSuccess, handleLocationError]);
 
-    // Check for the native bridge.
-    const isAndroidApp = !!window.AndroidBridge;
+    // This check is now more reliable.
+    const isAndroidApp = !!window.IS_ANDROID_APP;
 
     // Android app detection and location tracking setup
     useEffect(() => {
