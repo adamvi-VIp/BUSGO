@@ -450,6 +450,7 @@ function App() {
     // PWA Install Prompt state
     const [showPWAInstall, setShowPWAInstall] = useState(false);
     const [pwaPromptDismissed, setPwaPromptDismissed] = useState(false);
+    const [isAndroidApp, setIsAndroidApp] = useState(false); // State to track if in Android App
 
     // SplashScreen loading state
     const [mapReady, _setMapReady] = useState(false);
@@ -931,13 +932,18 @@ function App() {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
       window.navigator.standalone === true;
 
-    // Show PWA install prompt when not in standalone mode
+    // Check if running inside the native Android app
     useEffect(() => {
-        if (!isStandalone && !showPWAInstall && !pwaPromptDismissed) {
+        setIsAndroidApp(/BusGoApp/.test(navigator.userAgent));
+    }, []);
+
+    // Show PWA install prompt when not in standalone mode and not in Android app
+    useEffect(() => {
+        if (!isStandalone && !isAndroidApp && !showPWAInstall && !pwaPromptDismissed) {
             // Show the prompt immediately when app loads
             setShowPWAInstall(true);
         }
-    }, [isStandalone, showPWAInstall, pwaPromptDismissed]);
+    }, [isStandalone, isAndroidApp, showPWAInstall, pwaPromptDismissed]);
 
     // Persistent station modal memory
     const STATION_CACHE_KEY = 'lastOpenedStation';
