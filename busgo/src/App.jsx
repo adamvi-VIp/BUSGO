@@ -1035,7 +1035,10 @@ function App() {
                 stationBoxLoaded={stationBoxLoaded} // <-- pass as prop
             />
 
-            <header className="absolute top-0 left-0 w-full z-20 p-4 pointer-events-none">
+            <header
+                className={`absolute top-0 left-0 w-full z-20 p-4 pointer-events-none${isAndroidApp ? ' mt-20' : ''}`}
+                style={isAndroidApp ? { marginTop: 30 } : {}}
+            >
                 <div className="max-w-xl w-full mx-auto flex flex-col items-center gap-3 pointer-events-auto">
                     <h1 className="m-0 font-bold text-3xl text-white tracking-tighter font-onest" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.7)' }}>
                         BusGo
@@ -1043,7 +1046,7 @@ function App() {
                     <div className="relative w-full">
                         <input
                             type="text"
-                            className="w-full px-5 py-3 pr-12 text-base border border-gray-500/50 rounded-xl outline-none transition-all duration-300 ease-in-out glass-effect text-white font-inter font-normal placeholder-gray-400 focus:shadow-lg focus:border-cyan-400"
+                            className={`w-full px-5 py-3 pr-12 text-base border border-gray-500/50 rounded-xl outline-none transition-all duration-300 ease-in-out glass-effect text-white font-inter font-normal placeholder-gray-400 focus:shadow-lg focus:border-cyan-400${isAndroidApp ? ' mt-4' : ''}`}
                             placeholder="Search for a station..."
                             value={searchTerm}
                             onChange={handleSearchChange}
