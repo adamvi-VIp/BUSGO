@@ -450,7 +450,6 @@ function App() {
     // PWA Install Prompt state
     const [showPWAInstall, setShowPWAInstall] = useState(false);
     const [pwaPromptDismissed, setPwaPromptDismissed] = useState(false);
-    const [isAndroidApp, setIsAndroidApp] = useState(false); // State to track if in Android App
 
     // SplashScreen loading state
     const [mapReady, _setMapReady] = useState(false);
@@ -932,10 +931,8 @@ function App() {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
       window.navigator.standalone === true;
 
-    // Check if running inside the native Android app
-    useEffect(() => {
-        setIsAndroidApp(/BusGoApp/.test(navigator.userAgent));
-    }, []);
+    // Check for the native bridge. This is the most reliable way.
+    const isAndroidApp = !!window.AndroidBridge;
 
     // Show PWA install prompt when not in standalone mode and not in Android app
     useEffect(() => {

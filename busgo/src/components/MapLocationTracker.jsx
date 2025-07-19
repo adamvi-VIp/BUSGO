@@ -87,15 +87,15 @@ const MapLocationTracker = ({ socket, programmaticMoveRef }) => {
         }
     }, [handleLocationSuccess, handleLocationError]);
 
+    // Check for the native bridge.
+    const isAndroidApp = !!window.AndroidBridge;
+
     // Android app detection and location tracking setup
     useEffect(() => {
         // Expose the start function to the window so native Android code can call it.
         window.startLocationTracking = startLocationWatch;
 
-        // Check if we are inside the Android app by looking for the custom User-Agent.
-        const isAndroidApp = /BusGoApp/.test(navigator.userAgent);
-
-        // If NOT in the app, start tracking immediately for regular browser usage.
+        // If NOT in the app, start tracking immediately.
         if (!isAndroidApp) {
             console.log("Running in browser, starting location watch automatically.");
             startLocationWatch();
@@ -111,7 +111,7 @@ const MapLocationTracker = ({ socket, programmaticMoveRef }) => {
             }
             delete window.startLocationTracking; // Clean up the global function
         };
-    }, [startLocationWatch]);
+    }, [startLocationWatch, isAndroidApp]);
 
     const handleUpdateStations = () => {
         if (pendingCenter) {
