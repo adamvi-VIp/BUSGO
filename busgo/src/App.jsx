@@ -734,16 +734,21 @@ function App() {
                 // If locationPermissionStatus is still 'pending', don't request anything yet
             }
             // If a stop is selected, re-monitor it
-            if (selectedStop) {
+            if (
+                selectedStop &&
+                lastRequestedStopIdRef.current !== selectedStop.gtfsId
+            ) {
                 socket.emit('requestDepartures', selectedStop.gtfsId);
-                // Set timeout for reconnection loading state
-                setTimeout(() => {
+                lastRequestedStopIdRef.current = selectedStop.gtfsId;
+                setIsLoadingRealTime(true);
+                setRealTimeData(null);
+                if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
+                departureTimeoutRef.current = setTimeout(() => {
                     if (isLoadingRealTime) {
-                        console.log('[RECONNECT-TIMEOUT] Departure data loading timeout after reconnect, resetting state');
                         setIsLoadingRealTime(false);
                         setErrors(prev => [...prev, 'Departure data loading timed out after reconnect. Please try again.']);
                     }
-                }, 10000); // 10 second timeout
+                }, 10000);
             }
             
             // Reset flag after a delay
@@ -768,8 +773,21 @@ function App() {
         document.addEventListener('visibilitychange', onVisibility);
         
         // On mount, if selectedStop exists, re-monitor it (in case of reload)
-        if (selectedStop) {
+        if (
+            selectedStop &&
+            lastRequestedStopIdRef.current !== selectedStop.gtfsId
+        ) {
             socket.emit('requestDepartures', selectedStop.gtfsId);
+            lastRequestedStopIdRef.current = selectedStop.gtfsId;
+            setIsLoadingRealTime(true);
+            setRealTimeData(null);
+            if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
+            departureTimeoutRef.current = setTimeout(() => {
+                if (isLoadingRealTime) {
+                    setIsLoadingRealTime(false);
+                    setErrors(prev => [...prev, 'Departure data loading timed out after reconnect. Please try again.']);
+                }
+            }, 10000);
         }
         
         return () => {
@@ -858,6 +876,7 @@ function App() {
         }
         setSelectedStop(null);
         setRealTimeData(null);
+        lastRequestedStopIdRef.current = null; // Reset the last requested stop ID
         // Remove from sessionStorage
         sessionStorage.removeItem('selectedStop');
     };
