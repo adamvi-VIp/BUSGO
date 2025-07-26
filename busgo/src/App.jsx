@@ -523,7 +523,7 @@ function App() {
             if (stored) {
                 const stop = JSON.parse(stored);
                 if (stop && stop.gtfsId) {
-                    // Prevent duplicate emits for the same station
+                    // Only prevent duplicate emits if we're currently loading for this station
                     if (lastRequestedStopIdRef.current === stop.gtfsId && isLoadingRealTime) return;
                     lastRequestedStopIdRef.current = stop.gtfsId;
                     setIsLoadingRealTime(true);
@@ -543,6 +543,11 @@ function App() {
             // Ignore
         }
     }, [isLoadingRealTime]);
+
+    // Reset lastRequestedStopIdRef on app start to ensure clean state
+    useEffect(() => {
+        lastRequestedStopIdRef.current = null;
+    }, []);
 
     useEffect(() => {
         /**

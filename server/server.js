@@ -205,11 +205,11 @@ async function cacheStopsData() {
 
 // --- Real-time Polling Management ---
 const activeTimers = new Map(); // key: stopId (shared across users)
-const lastKnownData = new Map(); // key: stopId (shared across users)
+const lastKnownData = new Map(); // key: stopId, value: { data: {...}, timestamp: number } (shared across users)
 const usersMonitoringStop = new Map(); // key: stopId, value: Set of socketIds
 
 const TEMP_CACHE_FILE = './server/station_cache.json';
-const CACHE_MAX_AGE_MS = 15000; // 15 seconds
+const CACHE_MAX_AGE_MS = 8000; // 8 seconds (shorter than 10s polling interval)
 
 // Helper: Load temp cache from file
 async function loadTempCache() {
@@ -229,13 +229,29 @@ async function saveTempCache(cache) {
     }
 }
 
+// Helper: Check if cached data is fresh
+function isCacheFresh(timestamp) {
+    return Date.now() - timestamp < CACHE_MAX_AGE_MS;
+}
+
+// Helper: Format cache age for logging
+function formatCacheAge(timestamp) {
+    const ageMs = Date.now() - timestamp;
+    const ageSeconds = Math.round(ageMs / 1000);
+    return `${ageSeconds}s`;
+}
+
 // On startup, load temp cache
 (async () => {
     tempFileCache = await loadTempCache();
     // Populate in-memory cache for fast path
     for (const stopId in tempFileCache) {
-        lastKnownData.set(stopId, tempFileCache[stopId].data);
+        const entry = tempFileCache[stopId];
+        if (entry && entry.data && entry.timestamp) {
+            lastKnownData.set(stopId, { data: entry.data, timestamp: entry.timestamp });
+        }
     }
+    console.log(`[CACHE] Loaded ${Object.keys(tempFileCache).length} cached stations from temp file`);
 })();
 
 // --- Socket.IO Connection Handling ---
@@ -307,13 +323,14 @@ io.on('connection', (socket) => {
         let tempEntry = tempFileCache[stopId];
         if (tempEntry && now - tempEntry.timestamp < CACHE_MAX_AGE_MS) {
             // Serve from temp file if fresh
-            lastKnownData.set(stopId, tempEntry.data);
+            lastKnownData.set(stopId, { data: tempEntry.data, timestamp: tempEntry.timestamp });
             if (activeTimers.has(stopId)) {
-                console.log(`[TEMP CACHE] [${stopId} | ${stopName}] User ${socket.id} connected to already-polling station. Served fresh cached data from temp file (age: ${((now - tempEntry.timestamp)/1000).toFixed(1)}s)`);
-            } else if (DEBUG_LOGS) {
-                console.log(`[TEMP CACHE] [${stopId} | ${stopName}] Served fresh cached data from temp file (age: ${((now - tempEntry.timestamp)/1000).toFixed(1)}s)`);
+                console.log(`[TEMP CACHE] [${stopId} | ${stopName}] User ${socket.id} connected to already-polling station. Served fresh cached data from temp file (age: ${formatCacheAge(tempEntry.timestamp)})`);
+                socket.emit('departureData', tempEntry.data);
+            } else {
+                console.log(`[TEMP CACHE] [${stopId} | ${stopName}] Served fresh cached data from temp file (age: ${formatCacheAge(tempEntry.timestamp)})`);
+                socket.emit('departureData', tempEntry.data);
             }
-            socket.emit('departureData', tempEntry.data);
             // If not polling, start polling for future updates
             if (!activeTimers.has(stopId)) {
                 if (DEBUG_LOGS) console.log(`[TEMP CACHE] [${stopId} | ${stopName}] No polling active, starting polling for this station.`);
@@ -392,10 +409,14 @@ io.on('connection', (socket) => {
             return;
         }
         // If we have cached data in memory, send it immediately
-        const cachedData = lastKnownData.get(stopId);
-        if (cachedData) {
-            if (DEBUG_LOGS) console.log(`[MEM CACHE] [${stopId} | ${stopName}] Served cached data from memory (not temp file)`);
-            socket.emit('departureData', cachedData);
+        const cachedEntry = lastKnownData.get(stopId);
+        if (cachedEntry) {
+            if (isCacheFresh(cachedEntry.timestamp)) {
+                console.log(`[CACHE] [${stopId} | ${stopName}] Serving fresh cached data (age: ${formatCacheAge(cachedEntry.timestamp)})`);
+                socket.emit('departureData', cachedEntry.data);
+            } else {
+                console.log(`[CACHE] [${stopId} | ${stopName}] Cached data is stale (age: ${formatCacheAge(cachedEntry.timestamp)}), user will see loading while fetching fresh data`);
+            }
         } else {
             console.log(`[POLL] [${stopId} | ${stopName}] No cached data available, user ${socket.id} will see loading`);
         }
@@ -416,6 +437,31 @@ io.on('connection', (socket) => {
                         rateLimitedStations.delete(stopId);
                     }
                 }
+                
+                // Check if we have fresh cached data
+                const cachedEntry = lastKnownData.get(stopId);
+                if (cachedEntry && isCacheFresh(cachedEntry.timestamp)) {
+                    console.log(`[CACHE] [${stopId} | ${getStopNameById(stopId)}] Using fresh cached data (age: ${formatCacheAge(cachedEntry.timestamp)})`);
+                    // Send cached data to users
+                    const usersToNotify = usersMonitoringStop.get(stopId);
+                    if (usersToNotify && usersToNotify.size > 0) {
+                        usersToNotify.forEach(userSocketId => {
+                            const userSocket = io.sockets.sockets.get(userSocketId);
+                            if (userSocket) {
+                                userSocket.emit('departureData', cachedEntry.data);
+                            }
+                        });
+                    }
+                    return;
+                }
+                
+                // Cache is stale or doesn't exist, fetch fresh data
+                if (cachedEntry) {
+                    console.log(`[CACHE] [${stopId} | ${getStopNameById(stopId)}] Cached data is stale (age: ${formatCacheAge(cachedEntry.timestamp)}), fetching fresh data`);
+                } else {
+                    console.log(`[CACHE] [${stopId} | ${getStopNameById(stopId)}] No cached data available, fetching fresh data`);
+                }
+                
                 try {
                     const allDepartures = await Promise.all(gtfsIds.map(id => fetchDeparturesFromPID(id)));
                     const mergedDepartures = allDepartures.reduce((acc, data) => {
@@ -431,13 +477,19 @@ io.on('connection', (socket) => {
                         return timeA - timeB;
                     });
                     const mergedData = { departures: dedupedDepartures };
-                    lastKnownData.set(stopId, mergedData);
-                    tempFileCache[stopId] = { data: mergedData, timestamp: Date.now() };
+                    const timestamp = Date.now();
+                    
+                    // Store with timestamp
+                    lastKnownData.set(stopId, { data: mergedData, timestamp });
+                    tempFileCache[stopId] = { data: mergedData, timestamp };
                     await saveTempCache(tempFileCache);
+                    
+                    console.log(`[POLL] [${stopId} | ${getStopNameById(stopId)}] Fresh data fetched from PID API and cached (timestamp: ${new Date(timestamp).toISOString()})`);
+                    
                     // Send to all users monitoring this stop
                     const usersToNotify = usersMonitoringStop.get(stopId);
                     if (usersToNotify && usersToNotify.size > 0) {
-                        console.log(`[POLL] (robust) New data for [${stopId} | ${getStopNameById(stopId)}]. Emitting to ${usersToNotify.size} user(s)`);
+                        console.log(`[POLL] [${stopId} | ${getStopNameById(stopId)}] Emitting fresh data to ${usersToNotify.size} user(s)`);
                         usersToNotify.forEach(userSocketId => {
                             const userSocket = io.sockets.sockets.get(userSocketId);
                             if (userSocket) {
