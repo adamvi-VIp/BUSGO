@@ -184,7 +184,7 @@ const BottomMenu = ({
     useEffect(() => {
         if (isDragging) return; // Don't override during active drag
         
-        setTranslateY(isPanelExpanded ? '10px' : 'calc(100% - 220px)');
+        setTranslateY(isPanelExpanded ? '50px' : 'calc(100% - 220px)');
     }, [isPanelExpanded, isDragging]);
     
     // Add event listeners for touch events on the drag handle and menu header
