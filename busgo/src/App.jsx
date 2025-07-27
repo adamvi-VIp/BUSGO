@@ -4,12 +4,9 @@ import L from 'leaflet';
 import { socket } from './components/ConnectionStatus';
 import MessagesSection from './components/MessagesSection';
 import ErrorsSection from './components/ErrorsSection';
-import Pagination from './components/Pagination';
-import LoadingScreen from './components/LoadingScreen';
-import StopItem from './components/StopItem';
 import MapLocationTracker from './components/MapLocationTracker';
-import locationIcon from './assets/location.svg';
-import refreshIcon from './assets/refresh.svg';
+import BottomMenu from './components/BottomMenu';
+import LoadingScreen from './components/LoadingScreen';
 import iceIcon from './assets/ice.svg';
 import stationBoxIcon from './assets/stationbox.png';
 import SplashScreen from './components/SplashScreen';
@@ -930,12 +927,6 @@ function App() {
         setTimeout(() => setIsRefreshing(false), 1000);
     };
 
-    const cardsPerPage = 50;
-    const indexOfLastCard = currentPage * cardsPerPage;
-    const indexOfFirstCard = indexOfLastCard - cardsPerPage;
-    const currentCards = bottomMenuStops.slice(indexOfFirstCard, indexOfLastCard);
-    const totalPages = Math.ceil(bottomMenuStops.length / cardsPerPage);
-
     // Mobile 100vh fix and layout readiness
     useEffect(() => {
         function setVh() {
@@ -1101,67 +1092,23 @@ function App() {
                 </div>
             </header>
 
-            <div className={`
-                absolute bottom-0 left-0 right-0 z-30
-                transition-transform duration-500 ease-in-out
-                ${isPanelExpanded ? 'translate-y-10' : 'translate-y-[calc(100%-220px)]'}
-            `}>
-                <div className="w-full h-[calc(100vh-80px)] max-w-3xl mx-auto flex flex-col glass-effect rounded-t-2xl shadow-2xl overflow-hidden">
-                    <div className="p-3 text-center text-gray-300 border-b border-gray-700/60">
-                        <div className="relative">
-                            <div className="w-10 h-1.5 bg-gray-600 rounded-full mx-auto mb-1 cursor-pointer" onClick={() => setIsPanelExpanded(!isPanelExpanded)}></div>
-                            {userLocation && (
-                                <div className="absolute left-0 top-0 text-gray-400 text-sm">
-                                    <img src={locationIcon} alt="Location" className="w-5 h-5 opacity-60 m-1" />
-                                </div>
-                            )}
-                            <button
-                                onClick={handleRefreshClick}
-                                className="absolute right-0 top-0 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 active:from-blue-500/30 active:to-cyan-500/30 px-3 py-1 rounded-full border border-blue-400/30 transition-all duration-200 hover:scale-105 shadow-sm backdrop-blur-sm flex items-center justify-center"
-                            >
-                                <img
-                                    src={refreshIcon}
-                                    alt="Refresh"
-                                    className={`w-5 h-5 transition-transform duration-200 ${isRefreshing ? 'animate-spin-reverse' : ''}`}
-                                />
-                            </button>
-                        </div>
-                        <span className="text-sm font-semibold block">
-                            {searchTerm ? "Search Results" : "Nearby Stations"}
-                        </span>
-                    </div>
-
-                    <div className="flex-grow overflow-y-auto" ref={menuScrollRef}>
-                        {isLoading ? (
-                            <LoadingScreen />
-                        ) : currentCards.length > 0 ? (
-                            currentCards.map((stop) => (
-                                <StopItem
-                                    key={stop.uniqueStopPointId}
-                                    stop={stop}
-                                    handleStopSelect={() => handleStopSelect(stop)}
-                                    isSelected={selectedStop && selectedStop.gtfsId === stop.gtfsId}
-                                    ref={selectedStop && selectedStop.gtfsId === stop.gtfsId ? selectedStopRef : null}
-                                />
-                            ))
-                        ) : (
-                            <p className="text-gray-400 text-center p-10">
-                                {searchTerm ? 'No stops match your search.' : 'Nearby stops will appear here.'}
-                            </p>
-                        )}
-                    </div>
-
-                    {totalPages > 1 && isPanelExpanded && (
-                        <div className={`flex-shrink-0 border-t border-gray-700/60${isStandalone ? ' pb-8' : ''}`}>
-                            <Pagination
+            <BottomMenu
+                bottomMenuStops={bottomMenuStops}
+                isLoading={isLoading}
+                searchTerm={searchTerm}
+                isPanelExpanded={isPanelExpanded}
+                setIsPanelExpanded={setIsPanelExpanded}
                                 currentPage={currentPage}
-                                totalPages={totalPages}
-                                handlePageChange={(page) => setCurrentPage(page)}
-                            />
-                        </div>
-                    )}
-                </div>
-            </div>
+                setCurrentPage={setCurrentPage}
+                selectedStop={selectedStop}
+                handleStopSelect={handleStopSelect}
+                handleRefreshClick={handleRefreshClick}
+                isRefreshing={isRefreshing}
+                userLocation={userLocation}
+                isStandalone={isStandalone}
+                selectedStopRef={selectedStopRef}
+                menuScrollRef={menuScrollRef}
+            />
 
             {selectedStop && (
                 <StopModal
