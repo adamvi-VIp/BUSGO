@@ -817,18 +817,13 @@ function App() {
                  console.log('Emitting searchStops from App.jsx', { query: newSearchTerm, timestamp: Date.now() });
                  socket.emit('searchStops', { query: newSearchTerm, timestamp: Date.now() });
             } else {
+                // When search is cleared via keyboard, immediately show nearby stations
                 if (userLocation && locationPermissionStatus === 'granted') {
-                    if (!hasEmittedDefaultRef.current) {
-                        console.log('Emitting searchStops from App.jsx', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
-                        socket.emit('searchStops', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
-                        hasEmittedDefaultRef.current = true;
-                    }
+                    console.log('Emitting searchStops from App.jsx', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
+                    socket.emit('searchStops', { lat: userLocation.latitude, lon: userLocation.longitude, timestamp: Date.now() });
                 } else if (locationPermissionStatus === 'denied') {
-                    if (!hasEmittedDefaultRef.current) {
-                        console.log('Emitting searchStops from App.jsx', { timestamp: Date.now() });
-                        socket.emit('searchStops', { timestamp: Date.now() });
-                        hasEmittedDefaultRef.current = true;
-                    }
+                    console.log('Emitting searchStops from App.jsx', { timestamp: Date.now() });
+                    socket.emit('searchStops', { timestamp: Date.now() });
                 }
                 // If locationPermissionStatus is still 'pending', don't request anything yet
             }

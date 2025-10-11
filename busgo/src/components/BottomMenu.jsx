@@ -309,7 +309,7 @@ const BottomMenu = ({
     return (
         <div 
             ref={menuRef}
-            className="absolute bottom-0 left-0 right-0 z-30 touch-none"
+            className="absolute bottom-0 left-0 right-0 z-[70] touch-none"
             style={{
                 transform: `translateY(${translateY})`,
                 transition: isDragging ? 'none' : 'transform 500ms cubic-bezier(0.23, 1, 0.32, 1)', // iOS-like easing
