@@ -8,6 +8,8 @@ import refreshIcon from '../assets/refresh.svg';
 const BottomMenu = ({
     bottomMenuStops,
     isLoading,
+    isWaitingForLocation,
+    locationWaitRemainingSec,
     searchTerm,
     isPanelExpanded,
     setIsPanelExpanded,
@@ -339,11 +341,18 @@ const BottomMenu = ({
                     <span className="text-sm font-semibold block">
                         {searchTerm ? "Search Results" : "Nearby Stations"}
                     </span>
+                    {isWaitingForLocation && locationWaitRemainingSec != null && (
+                        <div className="mt-1 text-xs text-gray-300">
+                            Waiting for GPS location ({locationWaitRemainingSec}s)
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex-grow overflow-y-auto overscroll-contain" ref={menuScrollRef}>
                     {isLoading ? (
-                        <LoadingScreen />
+                        <div className="flex flex-col items-center justify-center p-2">
+                            <LoadingScreen secondaryText={null} />
+                        </div>
                     ) : currentCards.length > 0 ? (
                         currentCards.map((stop) => (
                             <StopItem

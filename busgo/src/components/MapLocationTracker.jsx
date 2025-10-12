@@ -9,7 +9,7 @@ import { useMap } from 'react-leaflet';
  * @param {object} props.socket - The Socket.IO client instance.
  * @param {object} props.programmaticMoveRef - Ref to distinguish programmatic moves.
  */
-const MapLocationTracker = ({ socket, programmaticMoveRef }) => {
+const MapLocationTracker = ({ socket, programmaticMoveRef, onUserLocationUpdate }) => {
     const map = useMap();
     const lastCenterRef = useRef(null);
     const userInteractingRef = useRef(false);
@@ -17,6 +17,11 @@ const MapLocationTracker = ({ socket, programmaticMoveRef }) => {
     const [pendingCenter, setPendingCenter] = useState(null);
     const [location, setLocation] = useState(null);
     const watchId = useRef(null);
+    const intervalIdRef = useRef(null);
+    const lastEmittedRef = useRef(null);
+    const lastPositionRef = useRef(null);
+    const highAccuracyRef = useRef(true);
+    const lastMovementTimestampRef = useRef(0);
 
     useEffect(() => {
         const handleMoveStart = () => {
@@ -53,11 +58,73 @@ const MapLocationTracker = ({ socket, programmaticMoveRef }) => {
         };
     }, [map, programmaticMoveRef]);
 
+    const toRad = (value) => (value * Math.PI) / 180;
+    const haversineDistanceMeters = (lat1, lon1, lat2, lon2) => {
+        const R = 6371000; // meters
+        const dLat = toRad(lat2 - lat1);
+        const dLon = toRad(lon2 - lon1);
+        const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    };
+
+    const emitNearbyStops = useCallback((coords, source = 'periodic') => {
+        if (!coords) return;
+        const payload = {
+            lat: coords.latitude,
+            lon: coords.longitude,
+            timestamp: Date.now(),
+            source
+        };
+        console.log('Emitting searchStops from MapLocationTracker', payload);
+        socket.emit('searchStops', payload);
+        lastEmittedRef.current = coords;
+    }, [socket]);
+
     const handleLocationSuccess = useCallback((position) => {
         const { latitude, longitude } = position.coords;
-        setLocation({ latitude, longitude });
-        console.log('Location updated:', { latitude, longitude });
-    }, []);
+        const coords = { latitude, longitude };
+        setLocation(coords);
+        lastPositionRef.current = coords;
+        if (typeof onUserLocationUpdate === 'function') {
+            onUserLocationUpdate(coords);
+        }
+        console.log('Location updated:', coords);
+        // Emit if moved significantly (>100m) since last emission to reduce server load/battery
+        if (lastEmittedRef.current) {
+            const dist = haversineDistanceMeters(
+                lastEmittedRef.current.latitude,
+                lastEmittedRef.current.longitude,
+                latitude,
+                longitude
+            );
+            if (dist > 100) {
+                emitNearbyStops(coords, 'movement');
+            }
+        }
+        // Adaptive accuracy: use speed if available, otherwise infer by distance change
+        const speed = position.coords.speed; // m/s (may be null)
+        const now = Date.now();
+        const movedRecently = lastMovementTimestampRef.current && (now - lastMovementTimestampRef.current) < 60000;
+        const significantMove = lastPositionRef.current ? haversineDistanceMeters(
+            lastPositionRef.current.latitude,
+            lastPositionRef.current.longitude,
+            latitude,
+            longitude
+        ) > 30 : false;
+        if (significantMove) lastMovementTimestampRef.current = now;
+
+        // Switch to high accuracy when moving fast, otherwise prefer lower accuracy
+        const shouldHighAcc = (speed != null && speed > 2) || significantMove || movedRecently;
+        if (shouldHighAcc && !highAccuracyRef.current) {
+            restartWatch(true);
+        } else if (!shouldHighAcc && highAccuracyRef.current) {
+            restartWatch(false);
+        }
+    }, [emitNearbyStops, onUserLocationUpdate]);
 
     const handleLocationError = useCallback((error) => {
         console.error('Location error:', error);
@@ -77,41 +144,115 @@ const MapLocationTracker = ({ socket, programmaticMoveRef }) => {
     }, []);
 
     const startLocationWatch = useCallback(() => {
-        if (navigator.geolocation && !watchId.current) {
-            console.log("Starting location watch...");
-            watchId.current = navigator.geolocation.watchPosition(
-                handleLocationSuccess,
-                handleLocationError,
-                { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
-            );
+        if (!navigator.geolocation) {
+            console.warn('Geolocation not supported.');
+            return;
         }
+        if (watchId.current) return;
+        console.log('Starting location watch (adaptive accuracy)...');
+        watchId.current = navigator.geolocation.watchPosition(
+            handleLocationSuccess,
+            (error) => {
+                handleLocationError(error);
+                // iOS Safari workaround: on POSITION_UNAVAILABLE/TIMEOUT, retry a one-shot getCurrentPosition
+                if (
+                    error.code === error.POSITION_UNAVAILABLE ||
+                    error.code === error.TIMEOUT
+                ) {
+                    navigator.geolocation.getCurrentPosition(
+                        handleLocationSuccess,
+                        handleLocationError,
+                        { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 }
+                    );
+                }
+            },
+            {
+                // Start with high accuracy for smooth initial lock
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 5000,
+            }
+        );
+        highAccuracyRef.current = true;
     }, [handleLocationSuccess, handleLocationError]);
+
+    const restartWatch = useCallback((enableHighAccuracy) => {
+        if (!navigator.geolocation) return;
+        if (watchId.current) {
+            navigator.geolocation.clearWatch(watchId.current);
+            watchId.current = null;
+        }
+        watchId.current = navigator.geolocation.watchPosition(
+            handleLocationSuccess,
+            handleLocationError,
+            {
+                enableHighAccuracy,
+                timeout: enableHighAccuracy ? 10000 : 15000,
+                maximumAge: enableHighAccuracy ? 5000 : 30000,
+            }
+        );
+        highAccuracyRef.current = enableHighAccuracy;
+        console.log('Restarted watch with', enableHighAccuracy ? 'high' : 'low', 'accuracy');
+    }, [handleLocationSuccess, handleLocationError]);
+
+    // Auto-start continuous tracking on mount
+    useEffect(() => {
+        if (!navigator.geolocation) {
+            console.warn('Geolocation unsupported in this browser.');
+            return;
+        }
+        if (!window.isSecureContext) {
+            console.warn('Geolocation may be blocked without HTTPS. Ensure a secure origin (https).');
+        }
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const { latitude, longitude } = position.coords;
+                const coords = { latitude, longitude };
+                setLocation(coords);
+                lastPositionRef.current = coords;
+                if (typeof onUserLocationUpdate === 'function') {
+                    onUserLocationUpdate(coords);
+                }
+                emitNearbyStops(coords, 'initial');
+                startLocationWatch();
+            },
+            (error) => {
+                handleLocationError(error);
+                startLocationWatch();
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+        );
+        if (!intervalIdRef.current) {
+            intervalIdRef.current = setInterval(() => {
+                if (lastPositionRef.current) {
+                    emitNearbyStops(lastPositionRef.current, 'periodic');
+                }
+            }, 5 * 60 * 1000);
+        }
+        return () => {
+            if (watchId.current) {
+                navigator.geolocation.clearWatch(watchId.current);
+                watchId.current = null;
+            }
+            if (intervalIdRef.current) {
+                clearInterval(intervalIdRef.current);
+                intervalIdRef.current = null;
+            }
+        };
+    }, [emitNearbyStops, startLocationWatch, handleLocationError]);
 
     // This check is now more reliable.
     const isAndroidApp = !!window.IS_ANDROID_APP;
 
     // Android app detection and location tracking setup
     useEffect(() => {
-        // Expose the start function to the window so native Android code can call it.
-        window.startLocationTracking = startLocationWatch;
-
-        // If NOT in the app, start tracking immediately.
-        if (!isAndroidApp) {
-            console.log("Running in browser, starting location watch automatically.");
-            startLocationWatch();
-        } else {
-            console.log("Running in Android App, waiting for native signal to start location watch.");
-        }
-
-        // Cleanup function to clear the watch when the component unmounts.
+        // Expose a no-op for Android native integration if needed
+        window.startLocationTracking = () => {};
+        // Always keep watch active; do not pause on visibility to maintain uninterrupted tracking
         return () => {
-            if (watchId.current) {
-                navigator.geolocation.clearWatch(watchId.current);
-                watchId.current = null;
-            }
-            delete window.startLocationTracking; // Clean up the global function
+            delete window.startLocationTracking;
         };
-    }, [startLocationWatch, isAndroidApp]);
+    }, []);
 
     const handleUpdateStations = () => {
         if (pendingCenter) {
@@ -128,24 +269,28 @@ const MapLocationTracker = ({ socket, programmaticMoveRef }) => {
         }
     };
 
-    // Floating button at bottom center, above the bottom menu
-    return showUpdateButton ? (
-        <div style={{
-            position: 'absolute',
-            left: '50%',
-            bottom: '235px', // Place above the bottom menu
-            transform: 'translateX(-50%)',
-            zIndex: 1000,
-            pointerEvents: 'auto',
-        }}>
-            <button
-                onClick={handleUpdateStations}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-full shadow-lg border border-blue-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400"
-            >
-                Search stations for this area
-            </button>
-        </div>
-    ) : null;
+    // Floating button to update stations for current map area
+    return (
+        <>
+            {showUpdateButton && (
+                <div style={{
+                    position: 'absolute',
+                    left: '50%',
+                    bottom: '235px', // Place above the bottom menu
+                    transform: 'translateX(-50%)',
+                    zIndex: 1000,
+                    pointerEvents: 'auto',
+                }}>
+                    <button
+                        onClick={handleUpdateStations}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-full shadow-lg border border-blue-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    >
+                        Search stations for this area
+                    </button>
+                </div>
+            )}
+        </>
+    );
 };
 
 export default MapLocationTracker;

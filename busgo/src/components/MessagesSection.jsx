@@ -28,7 +28,6 @@ const MessagesSection = ({ messages }) => {
                         <div className="text-xl flex-shrink-0 mt-0.5">
                             {message.type === 'departure' && '🚌'}
                             {message.type === 'info' && 'ℹ️'}
-                            {!message.type && '💬'}
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="font-medium mb-1 break-words">{message.message}</div>

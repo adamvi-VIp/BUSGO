@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { socket } from './components/ConnectionStatus';
-import MessagesSection from './components/MessagesSection';
 import ErrorsSection from './components/ErrorsSection';
 import MapLocationTracker from './components/MapLocationTracker';
 import BottomMenu from './components/BottomMenu';
@@ -39,7 +38,7 @@ function MapViewUpdater({ center, zoom, shouldUpdate, programmaticMoveRef, setMa
   return null;
 }
 
-const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, socket, isRefreshing, shouldUpdateCamera, programmaticMoveRef, setMapReady, stationBoxLoaded }) => {
+const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, socket, isRefreshing, shouldUpdateCamera, programmaticMoveRef, setMapReady, stationBoxLoaded, onUserLocationUpdate }) => {
     const mapPosition = userLocation
         ? [userLocation.latitude, userLocation.longitude]
         : [50.0755, 14.4378]; // Prague center fallback
@@ -97,6 +96,14 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
         }
     }, [shouldUpdateCamera, userLocation]);
 
+    // Smoothly follow user during continuous tracking when no stop is selected
+    useEffect(() => {
+        if (userLocation && !selectedStop) {
+            setLocalShouldUpdateCamera(true);
+            setTimeout(() => setLocalShouldUpdateCamera(false), 50);
+        }
+    }, [userLocation?.latitude, userLocation?.longitude, selectedStop?.gtfsId]);
+
     useEffect(() => {
         console.log('AppMap rendering with position:', centerPosition, 'stops:', stops.length, 'userLocation:', userLocation, 'selectedStop:', selectedStop?.name);
     }, [stops.length, selectedStop?.gtfsId, userLocation, centerPosition]);
@@ -113,7 +120,7 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
                 whenCreated={mapInstance => { mapRef.current = mapInstance; }}
             >
                 <MapViewUpdater center={centerPosition} zoom={selectedStop ? 16 : 16} shouldUpdate={localShouldUpdateCamera} programmaticMoveRef={programmaticMoveRef} setMapReady={setMapReady} />
-                <MapLocationTracker socket={socket} programmaticMoveRef={programmaticMoveRef} />
+                <MapLocationTracker socket={socket} programmaticMoveRef={programmaticMoveRef} onUserLocationUpdate={onUserLocationUpdate} />
                 <TileLayer
                     attribution=""
                     url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
@@ -438,11 +445,16 @@ function App() {
     const [messages, setMessages] = useState([]);
     const [errors, setErrors] = useState([]);
     const [userLocation, setUserLocation] = useState(null);
+    const userLocationRef = useRef(null);
     const [locationPermissionStatus, setLocationPermissionStatus] = useState('pending'); // 'pending', 'granted', 'denied'
+    const [locationStatusDetail, setLocationStatusDetail] = useState('unknown'); // 'not_determined' | 'restricted' | 'denied' | 'authorized_when_in_use' | 'authorized_always' | 'temporary_limitation' | 'unknown'
+    const [locationDecisionPending, setLocationDecisionPending] = useState(false);
+    const locationDecisionPendingRef = useRef(false);
     const [isPanelExpanded, setIsPanelExpanded] = useState(false);
     const [shouldUpdateCamera, setShouldUpdateCamera] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isLayoutReady, setIsLayoutReady] = useState(false); // New state for layout readiness
+    const [locationWaitRemainingSec, setLocationWaitRemainingSec] = useState(null);
 
     // PWA Install Prompt state
     const [showPWAInstall, setShowPWAInstall] = useState(false);
@@ -506,6 +518,12 @@ function App() {
 
     const debounceTimeout = useRef(null);
     const hasFetchedForLocation = useRef(false);
+    const permissionCheckIntervalRef = useRef(null);
+    const permissionChecksRef = useRef(0);
+    const denialConfirmRef = useRef(0);
+    const waitTimeoutRef = useRef(null);
+    const waitCountdownIntervalRef = useRef(null);
+    const waitDeadlineRef = useRef(null);
     const selectedStopRef = useRef(null);
     const menuScrollRef = useRef(null);
     const programmaticMoveRef = useRef(false);
@@ -614,6 +632,13 @@ function App() {
     }, []);
 
     useEffect(() => {
+        const INITIAL_LOCATION_INIT_DELAY_MS = 3000;
+        const PERMISSION_RECHECK_FAST_MS = 5000;
+        const PERMISSION_RECHECK_SLOW_MS = 15000;
+        const PERMISSION_RECHECK_FAST_WINDOW_MS = 60000; // 1 minute
+        const LOCATION_WAIT_TIMEOUT_MS = 20000; // fallback to default after 20s
+        const DENIAL_CONFIRM_ATTEMPTS = 3; // persistent denial checks before messaging
+
         let hasEmittedInitialStops = false;
         function emitInitialStops(payload) {
             if (!hasEmittedInitialStops) {
@@ -622,73 +647,313 @@ function App() {
                 hasEmittedInitialStops = true;
             }
         }
-        if (navigator.geolocation && !hasFetchedForLocation.current) {
-            hasFetchedForLocation.current = true;
-            console.log('[INIT] Fetching location and stops...');
-            // Check location permission status first
-            navigator.permissions.query({ name: 'geolocation' }).then(permissionStatus => {
-                setLocationPermissionStatus(permissionStatus.state);
-                if (permissionStatus.state === 'denied') {
-                    // Permission already denied, use default location
-                    console.log('[INIT] Location permission already denied, using default location');
-                    setIsLoading(false);
-                    setErrors(prev => [...prev, "Location access denied. Using default location."]);
-                    emitInitialStops({ timestamp: Date.now() });
-                    setLocationReady(true);
-                    setLocationPermissionStatus('denied');
-                } else {
-                    // Try to get location
+
+        const mapPermissionState = (state) => {
+            switch (state) {
+                case 'granted':
+                    return 'authorized_when_in_use';
+                case 'denied':
+                    return 'denied';
+                case 'prompt':
+                default:
+                    return 'not_determined';
+            }
+        };
+
+        const startPermissionMonitor = () => {
+            if (!('permissions' in navigator)) return;
+            permissionChecksRef.current = 0;
+            permissionCheckIntervalRef.current = setInterval(async () => {
+                try {
+                    const status = await navigator.permissions.query({ name: 'geolocation' });
+                    permissionChecksRef.current += 1;
+                    const detail = mapPermissionState(status.state);
+                    setLocationPermissionStatus(status.state);
+                    setLocationStatusDetail(detail);
+                    if (status.state === 'granted') {
+                        // Immediately obtain location and proceed
+                        tryGetLocation(true);
+                    } else if (status.state === 'denied') {
+                        denialConfirmRef.current += 1;
+                        if (denialConfirmRef.current >= DENIAL_CONFIRM_ATTEMPTS) {
+                            // Persistent denial: message, fallback to default stops, and stop monitoring
+                            setErrors(prev => Array.from(new Set([...prev, 'Location access denied. You can enable it in system settings.'])));
+                            setLocationPermissionStatus('denied');
+                            setLocationStatusDetail('denied');
+                            setLocationDecisionPending(false);
+                            locationDecisionPendingRef.current = false;
+                            emitInitialStops({ timestamp: Date.now() });
+                            setLocationReady(true);
+                            // Stop further monitoring to avoid flipping back to pending
+                            stopPermissionMonitor();
+                        }
+                    }
+                } catch {}
+            }, PERMISSION_RECHECK_FAST_MS);
+        };
+
+        const stopPermissionMonitor = () => {
+            if (permissionCheckIntervalRef.current) {
+                clearInterval(permissionCheckIntervalRef.current);
+                permissionCheckIntervalRef.current = null;
+            }
+            if (waitCountdownIntervalRef.current) {
+                clearInterval(waitCountdownIntervalRef.current);
+                waitCountdownIntervalRef.current = null;
+            }
+            waitDeadlineRef.current = null;
+            setLocationWaitRemainingSec(null);
+        };
+
+        const tryGetLocation = (highAcc = false) => {
+            if (!navigator.geolocation) return;
+            navigator.geolocation.getCurrentPosition(position => {
+                const { latitude, longitude } = position.coords;
+                setUserLocation({ latitude, longitude });
+                userLocationRef.current = { latitude, longitude };
+                emitInitialStops({ lat: latitude, lon: longitude, timestamp: Date.now() });
+                setShouldUpdateCamera(true);
+                setTimeout(() => setShouldUpdateCamera(false), 100);
+                setLocationReady(true);
+                setLocationPermissionStatus('granted');
+                setLocationStatusDetail('authorized_when_in_use');
+                setLocationDecisionPending(false);
+                locationDecisionPendingRef.current = false;
+                // After success, stop monitor
+                stopPermissionMonitor();
+                // Clear any fallback timeout
+                if (waitTimeoutRef.current) {
+                    clearTimeout(waitTimeoutRef.current);
+                    waitTimeoutRef.current = null;
+                }
+                if (waitCountdownIntervalRef.current) {
+                    clearInterval(waitCountdownIntervalRef.current);
+                    waitCountdownIntervalRef.current = null;
+                }
+                waitDeadlineRef.current = null;
+                setLocationWaitRemainingSec(null);
+            }, (error) => {
+                // Handle temporary limitations
+                const tempLimitation = error.code === error.POSITION_UNAVAILABLE || error.code === error.TIMEOUT;
+                if (tempLimitation) {
+                    setLocationStatusDetail('temporary_limitation');
+                    // Retry once with opposite accuracy setting
                     navigator.geolocation.getCurrentPosition(position => {
                         const { latitude, longitude } = position.coords;
                         setUserLocation({ latitude, longitude });
+                        userLocationRef.current = { latitude, longitude };
                         emitInitialStops({ lat: latitude, lon: longitude, timestamp: Date.now() });
                         setShouldUpdateCamera(true);
                         setTimeout(() => setShouldUpdateCamera(false), 100);
                         setLocationReady(true);
                         setLocationPermissionStatus('granted');
-                    }, (error) => {
-                        console.log('[INIT] Location access denied:', error.message);
-                        setIsLoading(false);
-                        setErrors(prev => [...prev, "Location access denied. Using default location."]);
-                        emitInitialStops({ timestamp: Date.now() });
-                        setLocationReady(true);
-                        setLocationPermissionStatus('denied');
-                    }, {
-                        timeout: 10000, // 10 second timeout
-                        enableHighAccuracy: false,
-                        maximumAge: 60000 // 1 minute cache
-                    });
+                        setLocationStatusDetail('authorized_when_in_use');
+                        setLocationDecisionPending(false);
+                        locationDecisionPendingRef.current = false;
+                        stopPermissionMonitor();
+                        if (waitTimeoutRef.current) {
+                            clearTimeout(waitTimeoutRef.current);
+                            waitTimeoutRef.current = null;
+                        }
+                        if (waitCountdownIntervalRef.current) {
+                            clearInterval(waitCountdownIntervalRef.current);
+                            waitCountdownIntervalRef.current = null;
+                        }
+                        waitDeadlineRef.current = null;
+                        setLocationWaitRemainingSec(null);
+                    }, () => {
+                        // keep waiting; do not display denial yet
+                    }, { enableHighAccuracy: !highAcc, timeout: highAcc ? 10000 : 15000, maximumAge: 30000 });
+                } else {
+                    // If denied via prompt, keep waiting; monitor will decide persistent denial
+                    setLocationStatusDetail('denied');
                 }
-            }).catch(() => {
-                // Fallback for browsers that don't support permissions API
-                navigator.geolocation.getCurrentPosition(position => {
-                    const { latitude, longitude } = position.coords;
-                    setUserLocation({ latitude, longitude });
-                    emitInitialStops({ lat: latitude, lon: longitude, timestamp: Date.now() });
-                    setShouldUpdateCamera(true);
-                    setTimeout(() => setShouldUpdateCamera(false), 100);
-                    setLocationReady(true);
-                    setLocationPermissionStatus('granted');
-                }, (error) => {
-                    console.log('[INIT] Location access denied:', error.message);
-                    setIsLoading(false);
-                    setErrors(prev => [...prev, "Location access denied. Using default location."]);
-                    emitInitialStops({ timestamp: Date.now() });
-                    setLocationReady(true);
-                    setLocationPermissionStatus('denied');
-                }, {
-                    timeout: 10000,
-                    enableHighAccuracy: false,
-                    maximumAge: 60000
-                });
+            }, {
+                timeout: highAcc ? 10000 : 15000,
+                enableHighAccuracy: highAcc,
+                maximumAge: 30000
             });
+        };
+
+        if (navigator.geolocation && !hasFetchedForLocation.current) {
+            hasFetchedForLocation.current = true;
+            setLocationDecisionPending(true);
+            locationDecisionPendingRef.current = true;
+            setMessages(prev => Array.from(new Set([...prev, 'Waiting for location permission...'])));
+            // Initial delay to avoid premature denial handling
+            setTimeout(async () => {
+                if ('permissions' in navigator) {
+                    try {
+                        const status = await navigator.permissions.query({ name: 'geolocation' });
+                        if (status.state === 'granted') {
+                            setLocationPermissionStatus('granted');
+                        } else {
+                            setLocationPermissionStatus('pending');
+                        }
+                        setLocationStatusDetail(mapPermissionState(status.state));
+                        if (status.state === 'granted') {
+                            // Get location immediately
+                            tryGetLocation(true);
+                        } else if (status.state === 'prompt') {
+                            // Prompt once, then monitor and wait
+                            tryGetLocation(true);
+                            startPermissionMonitor();
+                            // Setup fallback timeout for default stops
+                            // Start countdown for remaining wait time
+                            waitDeadlineRef.current = Date.now() + LOCATION_WAIT_TIMEOUT_MS;
+                            setLocationWaitRemainingSec(Math.ceil(LOCATION_WAIT_TIMEOUT_MS / 1000));
+                            if (!waitCountdownIntervalRef.current) {
+                                waitCountdownIntervalRef.current = setInterval(() => {
+                                    const remainingMs = (waitDeadlineRef.current || 0) - Date.now();
+                                    const sec = Math.max(0, Math.ceil(remainingMs / 1000));
+                                    setLocationWaitRemainingSec(sec);
+                                    if (remainingMs <= 0 && waitCountdownIntervalRef.current) {
+                                        clearInterval(waitCountdownIntervalRef.current);
+                                        waitCountdownIntervalRef.current = null;
+                                    }
+                                }, 500);
+                            }
+                            waitTimeoutRef.current = setTimeout(() => {
+                                if (!userLocationRef.current && locationDecisionPendingRef.current) {
+                                    // Switch to default without showing denial yet
+                                    setMessages(prev => Array.from(new Set([...prev, 'Using default location until permission is granted.'])));
+                                    emitInitialStops({ timestamp: Date.now() });
+                                    setLocationReady(true);
+                                    setLocationPermissionStatus('denied');
+                                    // Ensure we do not continue monitoring after fallback
+                                    stopPermissionMonitor();
+                                    if (waitCountdownIntervalRef.current) {
+                                        clearInterval(waitCountdownIntervalRef.current);
+                                        waitCountdownIntervalRef.current = null;
+                                    }
+                                    waitDeadlineRef.current = null;
+                                    setLocationWaitRemainingSec(null);
+                                }
+                            }, LOCATION_WAIT_TIMEOUT_MS);
+                        } else if (status.state === 'denied') {
+                            // Start monitor and fallback after timeout
+                            startPermissionMonitor();
+                            waitDeadlineRef.current = Date.now() + LOCATION_WAIT_TIMEOUT_MS;
+                            setLocationWaitRemainingSec(Math.ceil(LOCATION_WAIT_TIMEOUT_MS / 1000));
+                            if (!waitCountdownIntervalRef.current) {
+                                waitCountdownIntervalRef.current = setInterval(() => {
+                                    const remainingMs = (waitDeadlineRef.current || 0) - Date.now();
+                                    const sec = Math.max(0, Math.ceil(remainingMs / 1000));
+                                    setLocationWaitRemainingSec(sec);
+                                    if (remainingMs <= 0 && waitCountdownIntervalRef.current) {
+                                        clearInterval(waitCountdownIntervalRef.current);
+                                        waitCountdownIntervalRef.current = null;
+                                    }
+                                }, 500);
+                            }
+                            waitTimeoutRef.current = setTimeout(() => {
+                                if (!userLocationRef.current && locationDecisionPendingRef.current) {
+                                    setMessages(prev => Array.from(new Set([...prev, 'Using default location until permission is granted.'])));
+                                    emitInitialStops({ timestamp: Date.now() });
+                                    setLocationReady(true);
+                                    setLocationPermissionStatus('denied');
+                                    // Ensure we do not continue monitoring after fallback
+                                    stopPermissionMonitor();
+                                    if (waitCountdownIntervalRef.current) {
+                                        clearInterval(waitCountdownIntervalRef.current);
+                                        waitCountdownIntervalRef.current = null;
+                                    }
+                                    waitDeadlineRef.current = null;
+                                    setLocationWaitRemainingSec(null);
+                                }
+                            }, LOCATION_WAIT_TIMEOUT_MS);
+                        }
+                    } catch {
+                        // Permissions API not supported or failed
+                        tryGetLocation(true);
+                        waitDeadlineRef.current = Date.now() + LOCATION_WAIT_TIMEOUT_MS;
+                        setLocationWaitRemainingSec(Math.ceil(LOCATION_WAIT_TIMEOUT_MS / 1000));
+                        if (!waitCountdownIntervalRef.current) {
+                            waitCountdownIntervalRef.current = setInterval(() => {
+                                const remainingMs = (waitDeadlineRef.current || 0) - Date.now();
+                                const sec = Math.max(0, Math.ceil(remainingMs / 1000));
+                                setLocationWaitRemainingSec(sec);
+                                if (remainingMs <= 0 && waitCountdownIntervalRef.current) {
+                                    clearInterval(waitCountdownIntervalRef.current);
+                                    waitCountdownIntervalRef.current = null;
+                                }
+                            }, 500);
+                        }
+                        waitTimeoutRef.current = setTimeout(() => {
+                            if (!userLocationRef.current && locationDecisionPendingRef.current) {
+                                setMessages(prev => Array.from(new Set([...prev, 'Using default location until permission is granted.'])));
+                                emitInitialStops({ timestamp: Date.now() });
+                                setLocationReady(true);
+                                setLocationPermissionStatus('denied');
+                                stopPermissionMonitor();
+                                if (waitCountdownIntervalRef.current) {
+                                    clearInterval(waitCountdownIntervalRef.current);
+                                    waitCountdownIntervalRef.current = null;
+                                }
+                                waitDeadlineRef.current = null;
+                                setLocationWaitRemainingSec(null);
+                            }
+                        }, LOCATION_WAIT_TIMEOUT_MS);
+                    }
+                } else {
+                    // No permissions API; proceed with location get and timeout fallback
+                    tryGetLocation(true);
+                    waitDeadlineRef.current = Date.now() + LOCATION_WAIT_TIMEOUT_MS;
+                    setLocationWaitRemainingSec(Math.ceil(LOCATION_WAIT_TIMEOUT_MS / 1000));
+                    if (!waitCountdownIntervalRef.current) {
+                        waitCountdownIntervalRef.current = setInterval(() => {
+                            const remainingMs = (waitDeadlineRef.current || 0) - Date.now();
+                            const sec = Math.max(0, Math.ceil(remainingMs / 1000));
+                            setLocationWaitRemainingSec(sec);
+                            if (remainingMs <= 0 && waitCountdownIntervalRef.current) {
+                                clearInterval(waitCountdownIntervalRef.current);
+                                waitCountdownIntervalRef.current = null;
+                            }
+                        }, 500);
+                    }
+                    waitTimeoutRef.current = setTimeout(() => {
+                        if (!userLocationRef.current && locationDecisionPendingRef.current) {
+                            setMessages(prev => Array.from(new Set([...prev, 'Using default location until permission is granted.'])));
+                            emitInitialStops({ timestamp: Date.now() });
+                            setLocationReady(true);
+                            setLocationPermissionStatus('denied');
+                            stopPermissionMonitor();
+                            if (waitCountdownIntervalRef.current) {
+                                clearInterval(waitCountdownIntervalRef.current);
+                                waitCountdownIntervalRef.current = null;
+                            }
+                            waitDeadlineRef.current = null;
+                            setLocationWaitRemainingSec(null);
+                        }
+                    }, LOCATION_WAIT_TIMEOUT_MS);
+                }
+            }, INITIAL_LOCATION_INIT_DELAY_MS);
         } else if (!navigator.geolocation) {
             // Browser doesn't support geolocation
             console.log('[INIT] Geolocation not supported, using default location');
             setIsLoading(false);
             setLocationReady(true);
             setLocationPermissionStatus('denied');
+            setLocationStatusDetail('restricted');
+            setLocationDecisionPending(false);
         }
+
+        return () => {
+            if (permissionCheckIntervalRef.current) {
+                clearInterval(permissionCheckIntervalRef.current);
+                permissionCheckIntervalRef.current = null;
+            }
+            if (waitTimeoutRef.current) {
+                clearTimeout(waitTimeoutRef.current);
+                waitTimeoutRef.current = null;
+            }
+            if (waitCountdownIntervalRef.current) {
+                clearInterval(waitCountdownIntervalRef.current);
+                waitCountdownIntervalRef.current = null;
+            }
+            waitDeadlineRef.current = null;
+            setLocationWaitRemainingSec(null);
+        };
     }, []);
 
     // Persist selectedStop in sessionStorage
@@ -893,6 +1158,7 @@ function App() {
             navigator.geolocation.getCurrentPosition(position => {
                 const { latitude, longitude } = position.coords;
                 setUserLocation({ latitude, longitude });
+                userLocationRef.current = { latitude, longitude };
                 setLocationPermissionStatus('granted');
                 console.log('Emitting searchStops from App.jsx', { lat: latitude, lon: longitude, timestamp: Date.now() });
                 socket.emit('searchStops', { lat: latitude, lon: longitude, timestamp: Date.now() });
@@ -970,6 +1236,7 @@ function App() {
                         navigator.geolocation.getCurrentPosition(position => {
                             const { latitude, longitude } = position.coords;
                             setUserLocation({ latitude, longitude });
+                            userLocationRef.current = { latitude, longitude };
                             socket.emit('searchStops', { lat: latitude, lon: longitude, timestamp: Date.now() });
                             // After user's location, also search around the cached stop if valid
                             if (isValidLatLon) {
@@ -1043,6 +1310,7 @@ function App() {
                 programmaticMoveRef={programmaticMoveRef}
                 setMapReady={setMapReady}
                 stationBoxLoaded={stationBoxLoaded} // <-- pass as prop
+                onUserLocationUpdate={setUserLocation}
             />
 
             <header
@@ -1090,6 +1358,8 @@ function App() {
             <BottomMenu
                 bottomMenuStops={bottomMenuStops}
                 isLoading={isLoading}
+                isWaitingForLocation={((locationPermissionStatus === 'pending' || locationPermissionStatus === 'prompt') && locationDecisionPending && !userLocation)}
+                locationWaitRemainingSec={locationWaitRemainingSec}
                 searchTerm={searchTerm}
                 isPanelExpanded={isPanelExpanded}
                 setIsPanelExpanded={setIsPanelExpanded}
@@ -1114,7 +1384,6 @@ function App() {
                     error={errors.find(e => e.stopId === selectedStop.gtfsId)}
                 />
             )}
-            <MessagesSection messages={messages} />
             <ErrorsSection errors={errors.filter(e => !e.stopId)} removeError={removeError} />
             {/* PWA Install Prompt */}
             <PWAInstallPrompt 

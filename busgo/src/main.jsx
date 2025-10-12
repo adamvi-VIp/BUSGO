@@ -11,6 +11,11 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 )
 
+// Globally prevent copy operations
+document.addEventListener('copy', (e) => {
+  e.preventDefault();
+});
+
 // Fade out and remove the HTML splash after React is ready
 setTimeout(() => {
   const splash = document.getElementById('html-splash');
