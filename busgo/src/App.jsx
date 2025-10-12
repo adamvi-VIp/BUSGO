@@ -38,7 +38,7 @@ function MapViewUpdater({ center, zoom, shouldUpdate, programmaticMoveRef, setMa
   return null;
 }
 
-const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, socket, isRefreshing, shouldUpdateCamera, programmaticMoveRef, setMapReady, stationBoxLoaded, onUserLocationUpdate }) => {
+const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, socket, isRefreshing, programmaticMoveRef, setMapReady, stationBoxLoaded, onUserLocationUpdate }) => {
     const mapPosition = userLocation
         ? [userLocation.latitude, userLocation.longitude]
         : [50.0755, 14.4378]; // Prague center fallback
@@ -48,6 +48,7 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
         : mapPosition;
 
     const [localShouldUpdateCamera, setLocalShouldUpdateCamera] = useState(false);
+    const hasCenteredOnInitialUserRef = useRef(false);
     const [visibleStops, setVisibleStops] = useState(stops);
     const mapRef = useRef();
 
@@ -88,19 +89,16 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
         }
     }, [isRefreshing, userLocation]);
     
+    // Disable automatic camera following; viewport only updates on explicit user actions
+    // Selected station or manual refresh handled above.
+
+    // One-time center on first known user position at initial load
     useEffect(() => {
-        if (shouldUpdateCamera && userLocation) {
-            console.log('[MAP] Moving camera to user location on app start');
+        if (userLocation && !hasCenteredOnInitialUserRef.current && !selectedStop) {
+            console.log('[MAP] Initial load: centering on first user position');
             setLocalShouldUpdateCamera(true);
             setTimeout(() => setLocalShouldUpdateCamera(false), 100);
-        }
-    }, [shouldUpdateCamera, userLocation]);
-
-    // Smoothly follow user during continuous tracking when no stop is selected
-    useEffect(() => {
-        if (userLocation && !selectedStop) {
-            setLocalShouldUpdateCamera(true);
-            setTimeout(() => setLocalShouldUpdateCamera(false), 50);
+            hasCenteredOnInitialUserRef.current = true;
         }
     }, [userLocation?.latitude, userLocation?.longitude, selectedStop?.gtfsId]);
 
@@ -451,7 +449,6 @@ function App() {
     const [locationDecisionPending, setLocationDecisionPending] = useState(false);
     const locationDecisionPendingRef = useRef(false);
     const [isPanelExpanded, setIsPanelExpanded] = useState(false);
-    const [shouldUpdateCamera, setShouldUpdateCamera] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isLayoutReady, setIsLayoutReady] = useState(false); // New state for layout readiness
     const [locationWaitRemainingSec, setLocationWaitRemainingSec] = useState(null);
@@ -712,8 +709,6 @@ function App() {
                 setUserLocation({ latitude, longitude });
                 userLocationRef.current = { latitude, longitude };
                 emitInitialStops({ lat: latitude, lon: longitude, timestamp: Date.now() });
-                setShouldUpdateCamera(true);
-                setTimeout(() => setShouldUpdateCamera(false), 100);
                 setLocationReady(true);
                 setLocationPermissionStatus('granted');
                 setLocationStatusDetail('authorized_when_in_use');
@@ -743,8 +738,6 @@ function App() {
                         setUserLocation({ latitude, longitude });
                         userLocationRef.current = { latitude, longitude };
                         emitInitialStops({ lat: latitude, lon: longitude, timestamp: Date.now() });
-                        setShouldUpdateCamera(true);
-                        setTimeout(() => setShouldUpdateCamera(false), 100);
                         setLocationReady(true);
                         setLocationPermissionStatus('granted');
                         setLocationStatusDetail('authorized_when_in_use');
@@ -1306,7 +1299,6 @@ function App() {
                 selectedStop={selectedStop}
                 socket={socket}
                 isRefreshing={isRefreshing}
-                shouldUpdateCamera={shouldUpdateCamera}
                 programmaticMoveRef={programmaticMoveRef}
                 setMapReady={setMapReady}
                 stationBoxLoaded={stationBoxLoaded} // <-- pass as prop
