@@ -188,7 +188,8 @@ async function cacheStopsData() {
                         zone: stop.zone,
                         wheelchairAccess: stop.wheelchairAccess,
                         platform: stop.platform || null,
-                        lines: stop.lines || []
+                        lines: stop.lines || [],
+                        mainTrafficType: stop.mainTrafficType || null
                     };
                 });
             console.log(`[CACHE] Successfully cached and processed ${processedStopsCache.length} stops.`);

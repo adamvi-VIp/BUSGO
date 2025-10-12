@@ -8,6 +8,7 @@ import BottomMenu from './components/BottomMenu';
 import LoadingScreen from './components/LoadingScreen';
 import iceIcon from './assets/ice.svg';
 import stationBoxIcon from './assets/stationbox.png';
+import busStationBoxIcon from './assets/busstationbox.png';
 import SplashScreen from './components/SplashScreen';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 
@@ -131,13 +132,13 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
                             icon={L.divIcon({
                                 className: `custom-stop-marker ${selectedStop && selectedStop.gtfsId === stop.gtfsId ? 'opacity-50' : ''}`,
                                 html: `
-                                    <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
-                                        <img src='${stationBoxIcon}' alt='Station' style="width: 34px; height: 34px; display: block; opacity: 1;" />
-                                        ${stationBoxLoaded ? `<span style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; color: white; text-shadow: 0 1px 4px rgba(0,0,0,0.7); pointer-events: none;">${stop.platform || 'P'}</span>` : ''}
+                                    <div style="position: relative; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;">
+                                        <img src='${stop.mainTrafficType === 'bus' ? busStationBoxIcon : stationBoxIcon}' alt='Station' style="width: 48px; height: 48px; display: block; opacity: 1;" />
+                                        ${(stop.mainTrafficType === 'bus') ? '' : (stationBoxLoaded ? `<span style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; color: white; text-shadow: 0 1px 4px rgba(0,0,0,0.7); pointer-events: none;">${stop.platform || 'P'}</span>` : '')}
                                     </div>
                                 `,
-                                iconSize: [34, 34],
-                                iconAnchor: [17, 17]
+                                iconSize: [48, 48],
+                                iconAnchor: [24, 24]
                             })}
                             eventHandlers={{
                                 click: () => {
