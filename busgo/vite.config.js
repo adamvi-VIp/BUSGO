@@ -9,7 +9,6 @@ export default defineConfig({
     port: 5173,      // Default Vite port, change if needed
     // This will proxy any requests starting with /socket.io
     // from the Vite dev server to your Express server on port 3001.
-    allowedHosts: ['201381281e5f.ngrok-free.app'],
     proxy: {
       '/socket.io': {
         target: 'http://localhost:3001',
