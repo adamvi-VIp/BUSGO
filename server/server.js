@@ -301,9 +301,11 @@ io.on('connection', (socket) => {
             console.log(`[DEFAULT] Using Prague center. Found ${results.length} stops within 3km for ${socket.id}.`);
         }
         
-        if (params && params.source === 'map-movement') {
-            console.log(`[MAP-MOVE] Sending ${results.length} stops for map update to ${socket.id}.`);
-            socket.emit('stopsData', { stops: results, source: 'map-movement' });
+        if (params && (params.source === 'map-movement' || params.source === 'periodic' || params.source === 'movement')) {
+            const src = params.source;
+            const tag = src === 'map-movement' ? 'MAP-MOVE' : (src === 'periodic' ? 'PERIODIC' : 'MOVEMENT');
+            console.log(`[${tag}] Sending ${results.length} stops for map update to ${socket.id}.`);
+            socket.emit('stopsData', { stops: results, source: src });
         } else {
             console.log(`[STOPS] Sending ${results.length} stops for main list update to ${socket.id}.`);
             socket.emit('stopsData', results);

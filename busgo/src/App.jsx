@@ -578,8 +578,8 @@ function App() {
             const newStops = isObjectResponse ? response.stops : response;
             const source = isObjectResponse ? response.source : null;
 
-            if (source === 'map-movement') {
-                console.log('Received stops from map movement:', newStops.length);
+            if (source === 'map-movement' || source === 'periodic' || source === 'movement') {
+                console.log(`Received stops for map update [${source}]:`, (newStops || []).length);
                 // Add new stops to existing map stops, avoiding duplicates.
                 setMapStops(prevMapStops => {
                     const existingStopIds = new Set(prevMapStops.map(s => s.uniqueStopPointId));
