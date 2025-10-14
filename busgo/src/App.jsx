@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMap, Pane } from 'react-leaflet';
 import L from 'leaflet';
 import { socket } from './components/ConnectionStatus';
 import ErrorsSection from './components/ErrorsSection';
@@ -116,8 +116,18 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
                 zoomControl={false}
                 style={{ height: '100%', width: '100%' }}
                 attributionControl={false}
-                whenCreated={mapInstance => { mapRef.current = mapInstance; }}
+                whenCreated={mapInstance => {
+                    mapRef.current = mapInstance;
+                    // Ensure a dedicated pane for the user marker that sits above everything
+                    if (!mapInstance.getPane('userPane')) {
+                        mapInstance.createPane('userPane');
+                        const pane = mapInstance.getPane('userPane');
+                        pane.style.zIndex = 1000; // above popups (700) and markers (600)
+                        pane.style.pointerEvents = 'none'; // prevent blocking map interactions
+                    }
+                }}
             >
+                <Pane name="userPane" style={{ zIndex: 1000, pointerEvents: 'none' }} />
                 <MapViewUpdater center={centerPosition} zoom={selectedStop ? 16 : 16} shouldUpdate={localShouldUpdateCamera} programmaticMoveRef={programmaticMoveRef} setMapReady={setMapReady} />
                 <MapLocationTracker socket={socket} programmaticMoveRef={programmaticMoveRef} onUserLocationUpdate={onUserLocationUpdate} />
                 <TileLayer
@@ -153,16 +163,18 @@ const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, so
                 {userLocation && (
                     <Marker
                         position={[userLocation.latitude, userLocation.longitude]}
+                        pane="userPane"
+                        zIndexOffset={10000}
                         icon={L.divIcon({
                             className: 'custom-user-marker',
                             html: `
                                 <div class="relative">
-                                    <div class="w-3 h-3 bg-blue-500 rounded-full animate-ping absolute inset-0"></div>
-                                    <div class="w-3 h-3 bg-blue-500 rounded-full relative z-10"></div>
+                                    <div class="w-4 h-4 bg-green-500/60 rounded-full animate-ping absolute inset-0"></div>
+                                    <div class="w-4 h-4 bg-green-500 rounded-full relative z-10 shadow-[0_0_10px_rgba(34,197,94,0.7)]"></div>
                                 </div>
                             `,
-                            iconSize: [16, 16],
-                            iconAnchor: [8, 8]
+                            iconSize: [20, 20],
+                            iconAnchor: [10, 10]
                         })}
                     />
                 )}
@@ -1317,7 +1329,7 @@ function App() {
                     <div className="relative w-full">
                         <input
                             type="text"
-                            className={`w-full px-5 py-3 pr-12 text-base border border-gray-500/50 rounded-xl outline-none transition-all duration-300 ease-in-out glass-effect text-white font-inter font-normal placeholder-gray-400 focus:shadow-lg focus:border-cyan-400${isAndroidApp ? ' mt-4' : ''}`}
+                            className={`w-full px-5 py-3 pl-6 text-base border border-gray-500/50 rounded-3xl outline-none transition-all duration-300 ease-in-out glass-effect text-white font-inter font-normal placeholder-gray-400 focus:shadow-lg focus:border-cyan-400${isAndroidApp ? ' mt-4' : ''}`}
                             placeholder="Search for a station..."
                             value={searchTerm}
                             onChange={handleSearchChange}

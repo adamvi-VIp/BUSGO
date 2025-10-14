@@ -318,7 +318,7 @@ const BottomMenu = ({
                 willChange: 'transform' // Optimize for animations
             }}
             onTouchEnd={handleTouchEnd}>
-            <div className="w-full h-[calc(100vh-80px)] max-w-3xl mx-auto flex flex-col glass-effect rounded-t-2xl shadow-2xl overflow-hidden">
+            <div className="w-full h-[calc(100vh-80px)] max-w-3xl mx-auto flex flex-col glass-effect rounded-t-3xl shadow-2xl overflow-hidden">
                 <div className="p-3 text-center text-gray-300 border-b border-gray-700/60 menu-header cursor-grab active:cursor-grabbing">
                     <div className="relative">
                         <div className="w-12 h-1.5 bg-gray-600 rounded-full mx-auto mb-1 drag-handle"></div>
