@@ -68,64 +68,11 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
   }
 
-  .leaflet-container {
-    height: 100%;
-    width: 100%;
-    background-color: #1a1a1a;
-  }
 
-  .leaflet-tile-pane {
-    /* Using dark map tiles, no filter needed */
-  }
 
-  .custom-user-marker {
-    background: transparent !important;
-    border: none !important;
-  }
 
-  .custom-user-marker .animate-ping {
-    animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
-  }
 
-  @keyframes ping {
-    75%, 100% {
-      transform: scale(2);
-      opacity: 0;
-    }
-  }
 
-  /* Hide Leaflet attribution completely */
-  .leaflet-control-attribution,
-  .leaflet-control-attribution a,
-  .leaflet-control-attribution.leaflet-control {
-    display: none !important;
-    visibility: hidden !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-  }
-
-  /* Hide any attribution elements */
-  [class*="attribution"] {
-    display: none !important;
-    visibility: hidden !important;
-    opacity: 0 !important;
-  }
-
-  /* Dark mode for any remaining Leaflet controls */
-  .leaflet-control {
-    background: rgba(30, 30, 30, 0.8) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    color: white !important;
-  }
-
-  .leaflet-control a {
-    color: white !important;
-    background: rgba(30, 30, 30, 0.8) !important;
-  }
-
-  .leaflet-control a:hover {
-    background: rgba(50, 50, 50, 0.9) !important;
-  }
 
   /* Ice icon styling */
   .ice-icon-ac {

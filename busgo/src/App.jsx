@@ -1,187 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, useMap, Pane } from 'react-leaflet';
-import L from 'leaflet';
 import { socket } from './components/ConnectionStatus';
 import ErrorsSection from './components/ErrorsSection';
-import MapLocationTracker from './components/MapLocationTracker';
 import BottomMenu from './components/BottomMenu';
 import LoadingScreen from './components/LoadingScreen';
 import iceIcon from './assets/ice.svg';
-import stationBoxIcon from './assets/stationbox.png';
-import busStationBoxIcon from './assets/busstationbox.png';
 import SplashScreen from './components/SplashScreen';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
+import MapGL from './components/MapGL';
 
-// --- Map Components ---
-function MapViewUpdater({ center, zoom, shouldUpdate, programmaticMoveRef, setMapReady }) {
-  const map = useMap();
-
-  useEffect(() => {
-    // On initial mount, invalidate the map's size to ensure it's rendered correctly.
-    // This is a fix for a race condition on mobile devices where the map
-    // may initialize before the viewport height is correctly calculated.
-    if (map) {
-      map.invalidateSize();
-      if (setMapReady) setMapReady(true);
-    }
-  }, [map, setMapReady]);
-
-  useEffect(() => {
-    if (center && shouldUpdate) {
-      if (programmaticMoveRef) programmaticMoveRef.current = true;
-      console.log('[MAP] Moving camera to:', center);
-      map.flyTo(center, zoom, {
-        duration: 1,
-        easeLinearity: 0.25
-      });
-    }
-  }, [shouldUpdate, center, zoom, map, programmaticMoveRef]);
-  return null;
-}
-
-const AppMap = React.memo(({ stops, userLocation, onStopSelect, selectedStop, socket, isRefreshing, programmaticMoveRef, setMapReady, stationBoxLoaded, onUserLocationUpdate }) => {
-    const mapPosition = userLocation
-        ? [userLocation.latitude, userLocation.longitude]
-        : [50.0755, 14.4378]; // Prague center fallback
-
-    const centerPosition = selectedStop && selectedStop.lat !== undefined && selectedStop.lon !== undefined && !isNaN(selectedStop.lat) && !isNaN(selectedStop.lon)
-        ? [selectedStop.lat, selectedStop.lon]
-        : mapPosition;
-
-    const [localShouldUpdateCamera, setLocalShouldUpdateCamera] = useState(false);
-    const hasCenteredOnInitialUserRef = useRef(false);
-    const [visibleStops, setVisibleStops] = useState(stops);
-    const mapRef = useRef();
-
-    useEffect(() => {
-        setVisibleStops(stops); // Reset visible stops when stops change
-    }, [stops]);
-
-    // Update visible stops based on map bounds
-    useEffect(() => {
-        const map = mapRef.current;
-        if (!map) return;
-        const updateVisibleStops = () => {
-            const bounds = map.getBounds();
-            setVisibleStops(
-                stops.filter(stop =>
-                    stop.lat && stop.lon && bounds.contains([stop.lat, stop.lon])
-                )
-            );
-        };
-        map.on('moveend', updateVisibleStops);
-        updateVisibleStops();
-        return () => map.off('moveend', updateVisibleStops);
-    }, [stops]);
-
-    useEffect(() => {
-        if (selectedStop) {
-            console.log('[MAP] Stop selected, moving camera to:', selectedStop.name);
-            setLocalShouldUpdateCamera(true);
-            setTimeout(() => setLocalShouldUpdateCamera(false), 100);
-        }
-    }, [selectedStop?.gtfsId]);
-    
-    useEffect(() => {
-        if (isRefreshing && userLocation) {
-            console.log('[MAP] Refresh clicked, moving camera to user location');
-            setLocalShouldUpdateCamera(true);
-            setTimeout(() => setLocalShouldUpdateCamera(false), 100);
-        }
-    }, [isRefreshing, userLocation]);
-    
-    // Disable automatic camera following; viewport only updates on explicit user actions
-    // Selected station or manual refresh handled above.
-
-    // One-time center on first known user position at initial load
-    useEffect(() => {
-        if (userLocation && !hasCenteredOnInitialUserRef.current && !selectedStop) {
-            console.log('[MAP] Initial load: centering on first user position');
-            setLocalShouldUpdateCamera(true);
-            setTimeout(() => setLocalShouldUpdateCamera(false), 100);
-            hasCenteredOnInitialUserRef.current = true;
-        }
-    }, [userLocation?.latitude, userLocation?.longitude, selectedStop?.gtfsId]);
-
-    useEffect(() => {
-        console.log('AppMap rendering with position:', centerPosition, 'stops:', stops.length, 'userLocation:', userLocation, 'selectedStop:', selectedStop?.name);
-    }, [stops.length, selectedStop?.gtfsId, userLocation, centerPosition]);
-
-    return (
-        <div className="absolute inset-0 z-0 h-full w-full">
-            <MapContainer
-                center={centerPosition}
-                zoom={selectedStop ? 16 : 16}
-                scrollWheelZoom={true}
-                zoomControl={false}
-                style={{ height: '100%', width: '100%' }}
-                attributionControl={false}
-                whenCreated={mapInstance => {
-                    mapRef.current = mapInstance;
-                    // Ensure a dedicated pane for the user marker that sits above everything
-                    if (!mapInstance.getPane('userPane')) {
-                        mapInstance.createPane('userPane');
-                        const pane = mapInstance.getPane('userPane');
-                        pane.style.zIndex = 1000; // above popups (700) and markers (600)
-                        pane.style.pointerEvents = 'none'; // prevent blocking map interactions
-                    }
-                }}
-            >
-                <Pane name="userPane" style={{ zIndex: 1000, pointerEvents: 'none' }} />
-                <MapViewUpdater center={centerPosition} zoom={selectedStop ? 16 : 16} shouldUpdate={localShouldUpdateCamera} programmaticMoveRef={programmaticMoveRef} setMapReady={setMapReady} />
-                <MapLocationTracker socket={socket} programmaticMoveRef={programmaticMoveRef} onUserLocationUpdate={onUserLocationUpdate} />
-                <TileLayer
-                    attribution=""
-                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                />
-                {visibleStops.map(stop => (
-                    (stop.lat && stop.lon) && (
-                        <Marker
-                            key={stop.uniqueStopPointId}
-                            position={[stop.lat, stop.lon]}
-                            icon={L.divIcon({
-                                className: `custom-stop-marker ${selectedStop && selectedStop.gtfsId === stop.gtfsId ? 'opacity-50' : ''}`,
-                                html: `
-                                    <div style="position: relative; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;">
-                                        <img src='${stop.mainTrafficType === 'bus' ? busStationBoxIcon : stationBoxIcon}' alt='Station' style="width: 48px; height: 48px; display: block; opacity: 1;" />
-                                        ${(stop.mainTrafficType === 'bus') ? '' : (stationBoxLoaded ? `<span style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; color: white; text-shadow: 0 1px 4px rgba(0,0,0,0.7); pointer-events: none;">${stop.platform || 'P'}</span>` : '')}
-                                    </div>
-                                `,
-                                iconSize: [48, 48],
-                                iconAnchor: [24, 24]
-                            })}
-                            eventHandlers={{
-                                click: () => {
-                                    if (onStopSelect && typeof onStopSelect === 'function' && (!selectedStop || selectedStop.gtfsId !== stop.gtfsId)) {
-                                        onStopSelect(stop);
-                                    }
-                                }
-                            }}
-                        />
-                    )
-                ))}
-                {userLocation && (
-                    <Marker
-                        position={[userLocation.latitude, userLocation.longitude]}
-                        pane="userPane"
-                        zIndexOffset={10000}
-                        icon={L.divIcon({
-                            className: 'custom-user-marker',
-                            html: `
-                                <div class="relative">
-                                    <div class="w-4 h-4 bg-green-500/60 rounded-full animate-ping absolute inset-0"></div>
-                                    <div class="w-4 h-4 bg-green-500 rounded-full relative z-10 shadow-[0_0_10px_rgba(34,197,94,0.7)]"></div>
-                                </div>
-                            `,
-                            iconSize: [20, 20],
-                            iconAnchor: [10, 10]
-                        })}
-                    />
-                )}
-            </MapContainer>
-        </div>
-    );
-});
 
 // --- Arrival Component (for the modal) ---
 const Arrival = ({ arrival }) => {
@@ -457,6 +283,10 @@ function App() {
     const [errors, setErrors] = useState([]);
     const [userLocation, setUserLocation] = useState(null);
     const userLocationRef = useRef(null);
+    // Add watcher id ref for continuous geolocation updates
+    const geoWatchIdRef = useRef(null);
+    const refreshInProgressRef = useRef(false);
+    const initialMapSyncDoneRef = useRef(false);
     const [locationPermissionStatus, setLocationPermissionStatus] = useState('pending'); // 'pending', 'granted', 'denied'
     const [locationStatusDetail, setLocationStatusDetail] = useState('unknown'); // 'not_determined' | 'restricted' | 'denied' | 'authorized_when_in_use' | 'authorized_always' | 'temporary_limitation' | 'unknown'
     const [locationDecisionPending, setLocationDecisionPending] = useState(false);
@@ -512,15 +342,6 @@ function App() {
             setTimeout(() => setShowSplash(false), 500); // fade out
         }
     }, [mapReady, locationReady, stationsReady]);
-
-    // Add state to track if stationBoxIcon is loaded
-    const [stationBoxLoaded, setStationBoxLoaded] = useState(false);
-
-    useEffect(() => {
-      const img = new window.Image();
-      img.src = stationBoxIcon;
-      img.onload = () => setStationBoxLoaded(true);
-    }, []);
 
     // Pass setMapReady to AppMap so it can call when map is ready
     // Pass setLocationReady to location logic
@@ -607,7 +428,23 @@ function App() {
                     stopsData = stopsData.sort((a, b) => a.distance - b.distance);
                 }
                 setBottomMenuStops(stopsData);
-                setMapStops(stopsData); // Reset map stops to match the main list.
+                if (refreshInProgressRef.current) {
+                    // Merge refreshed results into map stops rather than replacing
+                    setMapStops(prevMapStops => {
+                        const existingStopIds = new Set(prevMapStops.map(s => s.uniqueStopPointId));
+                        const uniqueNewStops = (stopsData || []).filter(s => !existingStopIds.has(s.uniqueStopPointId));
+                        return [...prevMapStops, ...uniqueNewStops];
+                    });
+                    refreshInProgressRef.current = false;
+                } else if (!initialMapSyncDoneRef.current) {
+                    // One-time initial sync: ensure nearby stops are visible on first render
+                    setMapStops(prevMapStops => {
+                        const existingStopIds = new Set(prevMapStops.map(s => s.uniqueStopPointId));
+                        const uniqueNewStops = (stopsData || []).filter(s => !existingStopIds.has(s.uniqueStopPointId));
+                        return [...prevMapStops, ...uniqueNewStops];
+                    });
+                    initialMapSyncDoneRef.current = true;
+                }
                 setIsLoading(false);
                 setStationsReady(true); // stations loaded
             }
@@ -621,6 +458,7 @@ function App() {
         const handleStopsError = (error) => {
             setErrors(prev => [...prev, error.error || 'Failed to fetch stops.']);
             setIsLoading(false);
+            refreshInProgressRef.current = false;
         };
         const handleDepartureError = (error) => {
             if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
@@ -740,6 +578,24 @@ function App() {
                 }
                 waitDeadlineRef.current = null;
                 setLocationWaitRemainingSec(null);
+
+                // Start continuous watch for real-time updates
+                try {
+                    if (geoWatchIdRef.current == null && navigator.geolocation) {
+                        const options = { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 };
+                        geoWatchIdRef.current = navigator.geolocation.watchPosition(
+                            (pos) => {
+                                const { latitude: lat2, longitude: lon2 } = pos.coords;
+                                setUserLocation({ latitude: lat2, longitude: lon2 });
+                                userLocationRef.current = { latitude: lat2, longitude: lon2 };
+                            },
+                            (err) => {
+                                console.warn('[GEO WATCH] error', err);
+                            },
+                            options
+                        );
+                    }
+                } catch {}
             }, (error) => {
                 // Handle temporary limitations
                 const tempLimitation = error.code === error.POSITION_UNAVAILABLE || error.code === error.TIMEOUT;
@@ -1154,8 +1010,9 @@ function App() {
     };
 
     const forceRefresh = () => {
+        refreshInProgressRef.current = true;
         setBottomMenuStops([]);
-        setMapStops([]);
+        // setMapStops([]); // removed to preserve existing map stops for merging
         setSearchTerm('');
         setIsPanelExpanded(false);
         setIsLoading(true);
@@ -1190,6 +1047,7 @@ function App() {
 
     const handleRefreshClick = () => {
         setIsRefreshing(true);
+        refreshInProgressRef.current = true;
         forceRefresh();
         setTimeout(() => setIsRefreshing(false), 1000);
     };
@@ -1288,6 +1146,16 @@ function App() {
         }
     }, [selectedStop]);
 
+    // Clear geolocation watcher on unmount
+    useEffect(() => {
+        return () => {
+            if (geoWatchIdRef.current != null) {
+                try { navigator.geolocation.clearWatch(geoWatchIdRef.current); } catch {}
+                geoWatchIdRef.current = null;
+            }
+        };
+    }, []);
+
     return (
         <div
             className={`relative${isStandalone ? ' pb-8' : ''}`}
@@ -1305,7 +1173,7 @@ function App() {
                 backgroundColor: '#0a0a0a', // Add the dark background color
             }}
         >
-            <AppMap 
+            <MapGL 
                 stops={mapStops} 
                 userLocation={userLocation} 
                 onStopSelect={handleStopSelect} 
@@ -1314,8 +1182,6 @@ function App() {
                 isRefreshing={isRefreshing}
                 programmaticMoveRef={programmaticMoveRef}
                 setMapReady={setMapReady}
-                stationBoxLoaded={stationBoxLoaded} // <-- pass as prop
-                onUserLocationUpdate={setUserLocation}
             />
 
             <header
@@ -1356,6 +1222,7 @@ function App() {
                                 </svg>
                             </button>
                         )}
+
                     </div>
                 </div>
             </header>
