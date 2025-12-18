@@ -18,9 +18,9 @@ if (process.env.NODE_ENV !== 'production') {
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
-  cors: {
-    origin: "*", // Allow all origins
-  },
+    cors: {
+        origin: "*", // Allow all origins
+    },
 });
 
 // --- API Key Loading ---
@@ -33,7 +33,7 @@ function getApiKey() {
         console.log('[INFO] PID API Key loaded successfully from environment variable.');
         return apiKey;
     }
-    
+
     // Debug information for Koyeb deployment
     console.log('[DEBUG] Environment check:');
     console.log('[DEBUG] NODE_ENV:', process.env.NODE_ENV);
@@ -41,7 +41,7 @@ function getApiKey() {
     console.log('[DEBUG] Available env vars with "PID":', Object.keys(process.env).filter(key => key.includes('PID')));
     console.log('[DEBUG] Available env vars with "API":', Object.keys(process.env).filter(key => key.includes('API')));
     console.log('[DEBUG] Available env vars with "KEY":', Object.keys(process.env).filter(key => key.includes('KEY')));
-    
+
     console.error('[FATAL] PID_API_KEY is not defined. Please set it in Koyeb secrets or in a local .env file.');
     console.error('[FATAL] For Koyeb: Create a secret named "PID_API_KEY" and attach it to your service.');
     console.error('[FATAL] For local dev: Add PID_API_KEY=your_key_here to your .env file.');
@@ -60,19 +60,19 @@ const rateLimitedStations = new Map(); // key: stopId, value: { until: timestamp
 // --- Helper Functions ---
 
 function deg2rad(deg) {
-  return deg * (Math.PI/180)
+    return deg * (Math.PI / 180)
 }
 
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
     var R = 6371; // Radius of the earth in km
-    var dLat = deg2rad(lat2-lat1);
-    var dLon = deg2rad(lon2-lon1);
+    var dLat = deg2rad(lat2 - lat1);
+    var dLon = deg2rad(lon2 - lon1);
     var a =
-        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
         Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
-        Math.sin(dLon/2) * Math.sin(dLon/2)
-    ;
-    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        ;
+    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     var d = R * c; // Distance in km
     return d;
 }
@@ -89,40 +89,40 @@ function filterNextDeparturesOnly(departures) {
     if (!Array.isArray(departures) || departures.length === 0) {
         return [];
     }
-    
+
     const departuresByLine = {};
-    
+
     departures.forEach(departure => {
         const route = departure.route;
         const lineNumber = route?.short_name || 'Unknown';
-        
+
         if (!departuresByLine[lineNumber]) {
             departuresByLine[lineNumber] = [];
         }
         departuresByLine[lineNumber].push(departure);
     });
-    
+
     const nextDepartures = [];
-    
+
     Object.keys(departuresByLine).forEach(lineNumber => {
         const lineDepartures = departuresByLine[lineNumber];
-        
+
         lineDepartures.sort((a, b) => {
             const timeA = a.departure_timestamp?.predicted || a.departure_timestamp?.scheduled || 0;
             const timeB = b.departure_timestamp?.predicted || b.departure_timestamp?.scheduled || 0;
             return timeA - timeB;
         });
-        
+
         // Push the next 3 departures for this line
         nextDepartures.push(...lineDepartures.slice(0, 3));
     });
-    
+
     nextDepartures.sort((a, b) => {
         const timeA = a.departure_timestamp?.predicted || a.departure_timestamp?.scheduled || 0;
         const timeB = b.departure_timestamp?.predicted || b.departure_timestamp?.scheduled || 0;
         return timeA - timeB;
     });
-    
+
     return nextDepartures;
 }
 
@@ -189,7 +189,8 @@ async function cacheStopsData() {
                         wheelchairAccess: stop.wheelchairAccess,
                         platform: stop.platform || null,
                         lines: stop.lines || [],
-                        mainTrafficType: stop.mainTrafficType || null
+                        mainTrafficType: stop.mainTrafficType || null,
+                        is_night: stop.is_night || false // Pass through is_night property
                     };
                 });
             console.log(`[CACHE] Successfully cached and processed ${processedStopsCache.length} stops.`);
@@ -272,7 +273,7 @@ io.on('connection', (socket) => {
             ).slice(0, 100);
         } else if (params && params.lat && params.lon) {
             const isMapMovement = params.source === 'map-movement';
-            
+
             let nearbyStops = processedStopsCache
                 .map(stop => ({
                     ...stop,
@@ -300,7 +301,7 @@ io.on('connection', (socket) => {
             results = nearbyStops;
             console.log(`[DEFAULT] Using Prague center. Found ${results.length} stops within 3km for ${socket.id}.`);
         }
-        
+
         if (params && (params.source === 'map-movement' || params.source === 'periodic' || params.source === 'movement')) {
             const src = params.source;
             const tag = src === 'map-movement' ? 'MAP-MOVE' : (src === 'periodic' ? 'PERIODIC' : 'MOVEMENT');
@@ -440,7 +441,7 @@ io.on('connection', (socket) => {
                         rateLimitedStations.delete(stopId);
                     }
                 }
-                
+
                 // Check if we have fresh cached data
                 const cachedEntry = lastKnownData.get(stopId);
                 if (cachedEntry && isCacheFresh(cachedEntry.timestamp)) {
@@ -457,14 +458,14 @@ io.on('connection', (socket) => {
                     }
                     return;
                 }
-                
+
                 // Cache is stale or doesn't exist, fetch fresh data
                 if (cachedEntry) {
                     console.log(`[CACHE] [${stopId} | ${getStopNameById(stopId)}] Cached data is stale (age: ${formatCacheAge(cachedEntry.timestamp)}), fetching fresh data`);
                 } else {
                     console.log(`[CACHE] [${stopId} | ${getStopNameById(stopId)}] No cached data available, fetching fresh data`);
                 }
-                
+
                 try {
                     const allDepartures = await Promise.all(gtfsIds.map(id => fetchDeparturesFromPID(id)));
                     const mergedDepartures = allDepartures.reduce((acc, data) => {
@@ -481,14 +482,14 @@ io.on('connection', (socket) => {
                     });
                     const mergedData = { departures: dedupedDepartures };
                     const timestamp = Date.now();
-                    
+
                     // Store with timestamp
                     lastKnownData.set(stopId, { data: mergedData, timestamp });
                     tempFileCache[stopId] = { data: mergedData, timestamp };
                     await saveTempCache(tempFileCache);
-                    
+
                     console.log(`[POLL] [${stopId} | ${getStopNameById(stopId)}] Fresh data fetched from PID API and cached (timestamp: ${new Date(timestamp).toISOString()})`);
-                    
+
                     // Send to all users monitoring this stop
                     const usersToNotify = usersMonitoringStop.get(stopId);
                     if (usersToNotify && usersToNotify.size > 0) {
@@ -535,24 +536,24 @@ io.on('connection', (socket) => {
         if (usersMonitoringStop.has(stopId) && usersMonitoringStop.get(stopId).has(socket.id)) {
             // Remove user from monitoring set
             usersMonitoringStop.get(stopId).delete(socket.id);
-            
+
             // Count how many users are still monitoring this stop
             const stillMonitoring = usersMonitoringStop.get(stopId).size;
-            
+
             if (stillMonitoring > 0) {
                 const stopName = getStopNameById(stopId);
                 if (DEBUG_LOGS) console.log(`[POLL] [${stopId} | ${stopName}] User ${socket.id} stopped monitoring. Still ${stillMonitoring} user(s) monitoring this stop.`);
             } else {
                 const stopName = getStopNameById(stopId);
                 console.log(`[POLL] [${stopId} | ${stopName}] No users are monitoring this stop now. Polling stopped and cache cleared.`);
-                
+
                 // Stop polling if no users are monitoring this stop
                 if (activeTimers.has(stopId)) {
                     clearInterval(activeTimers.get(stopId).intervalId);
                     activeTimers.delete(stopId);
                     lastKnownData.delete(stopId);
                 }
-                
+
                 // Clean up the monitoring set
                 usersMonitoringStop.delete(stopId);
             }
@@ -565,25 +566,25 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log(`[INFO] User disconnected: ${socket.id}. Will stop sending data to this user. Total users now: ${io.engine.clientsCount}`);
         let stopsAffected = [];
-        
+
         // Remove user from all monitoring sets
         for (const [stopId, userSet] of usersMonitoringStop.entries()) {
             if (userSet.has(socket.id)) {
                 userSet.delete(socket.id);
                 stopsAffected.push(stopId);
-                
+
                 // If no users are monitoring this stop, stop polling
                 if (userSet.size === 0) {
                     const stopName = getStopNameById(stopId);
                     console.log(`[CLEANUP] User ${socket.id} disconnected and stopped monitoring stop [${stopId} | ${stopName}]. No users are monitoring this stop now.`);
-                    
+
                     // Stop polling if no users are monitoring this stop
                     if (activeTimers.has(stopId)) {
                         clearInterval(activeTimers.get(stopId).intervalId);
                         activeTimers.delete(stopId);
                         lastKnownData.delete(stopId);
                     }
-                    
+
                     // Clean up the monitoring set
                     usersMonitoringStop.delete(stopId);
                 } else {
@@ -616,7 +617,7 @@ httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`| > PID API Key:     ${API_KEY ? 'Loaded Successfully' : 'NOT FOUND!'}         |`);
     console.log(`| > Polling Speed:   ${(POLLING_INTERVAL / 1000)} seconds                  |`);
     console.log('===================================================\n');
-    
+
     cacheStopsData();
     setInterval(cacheStopsData, 24 * 60 * 60 * 1000); // Re-cache once a day
 });

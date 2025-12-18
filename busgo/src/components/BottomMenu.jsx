@@ -25,109 +25,118 @@ const BottomMenu = ({
     menuScrollRef,
     cardsPerPage = 50
 }) => {
-    // Touch gesture state
+    // Constants for positions
+    const EXPANDED_Y = 140; // Increased to sit under SearchBar
+    const COLLAPSED_MARGIN = 160; // Distance from bottom of screen to top of collapsed menu
+
+    // Helper to get collapsed Y position
+    const getCollapsedY = () => window.innerHeight - COLLAPSED_MARGIN;
+
+    // State
     const [isDragging, setIsDragging] = useState(false);
     const [startY, setStartY] = useState(0);
     const [currentY, setCurrentY] = useState(0);
-    const [translateY, setTranslateY] = useState(isPanelExpanded ? 10 : 'calc(100% - 220px)');
+    // Initialize with numeric value directly
+    const [translateY, setTranslateY] = useState(isPanelExpanded ? EXPANDED_Y : getCollapsedY());
     const [touchVelocity, setTouchVelocity] = useState(0);
     const [lastTouchTimestamp, setLastTouchTimestamp] = useState(0);
     const [lastTouchY, setLastTouchY] = useState(0);
     const menuRef = useRef(null);
-    
-    // Constants for inertia behavior
-    const VELOCITY_THRESHOLD = 0.5; // pixels per millisecond
-    const indexOfLastCard = currentPage * cardsPerPage;
-    const indexOfFirstCard = indexOfLastCard - cardsPerPage;
-    const currentCards = bottomMenuStops.slice(indexOfFirstCard, indexOfLastCard);
-    const totalPages = Math.ceil(bottomMenuStops.length / cardsPerPage);
 
-    // Handle touch events for dragging
-    const handleTouchStart = (e) => {
-        // Only initiate drag if touch started on the handle or header area
-        const target = e.target;
-        const isHandle = target.classList.contains('drag-handle') || 
-                        target.closest('.menu-header') !== null;
-        
-        if (isHandle) {
-            // Get the current menu position before starting the drag
-            const menuElement = menuRef.current;
-            const currentTranslateY = window.getComputedStyle(menuElement).transform;
-            let currentY = 0;
-            
-            // Extract the current Y position from the transform matrix
-            if (currentTranslateY && currentTranslateY !== 'none') {
-                const matrix = new DOMMatrix(currentTranslateY);
-                currentY = matrix.m42; // Get the Y translation value
-            } else {
-                // Fallback if transform is not set
-                currentY = isPanelExpanded ? 10 : window.innerHeight - 220;
+    // Update state when window resizes to keep collapsed position correct
+    useEffect(() => {
+        const handleResize = () => {
+            if (!isPanelExpanded && !isDragging) {
+                setTranslateY(getCollapsedY());
             }
-            
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, [isPanelExpanded, isDragging]);
+
+    // Update translateY when isPanelExpanded changes from outside
+    useEffect(() => {
+        if (isDragging) return;
+        setTranslateY(isPanelExpanded ? EXPANDED_Y : getCollapsedY());
+    }, [isPanelExpanded, isDragging]);
+
+    const VELOCITY_THRESHOLD = 0.5;
+
+    // Derived values for interpolation
+    const windowHeight = window.innerHeight;
+    const collapsedY = getCollapsedY();
+    const totalTravel = collapsedY - EXPANDED_Y;
+
+    // Calculate progress (0 = expanded, 1 = collapsed)
+    // Clamp values to ensure we don't go out of bounds
+    const clampedY = Math.max(EXPANDED_Y, Math.min(translateY, collapsedY));
+    const progress = Math.max(0, Math.min(1, (clampedY - EXPANDED_Y) / totalTravel));
+
+    // Interpolated styles
+    const MARGIN_MAX = 8; // 0.5rem (left-2)
+    const BOTTOM_MARGIN_MAX = 8; // 0.5rem (same as sides)
+    const RADIUS_MAX = 40; // Increased from 24 (rounded-3xl) to 40 for "more rounded"
+
+    const sideMargin = progress * MARGIN_MAX;
+    const bottomGap = progress * BOTTOM_MARGIN_MAX;
+    const bottomRadius = progress * RADIUS_MAX;
+    const topRadius = RADIUS_MAX;
+
+    // Calculate height dynamically
+    // When expanded: Height = Window - EXPANDED_Y (top gap)
+    // When collapsed: We want the bottom to be at (Window - BottomGap)
+    // So VisualBottom = TranslateY + Height
+    // -> TranslateY + Height = Window - BottomGap
+    // -> Height = Window - BottomGap - TranslateY
+    // Be careful with the top gap (EXPANDED_Y is 10px from top)
+    // Actually, translateY IS the top position relative to screen top (since anchor is top-0 essentially in valid logic, but we used bottom-0)
+    // If we switch to top-0 logic for calculation it is easier.
+    // Let's assume layout is full screen absolute.
+    const dynamicHeight = windowHeight - bottomGap - translateY;
+
+    const handleTouchStart = (e) => {
+        const target = e.target;
+        const isHandle = target.classList.contains('drag-handle') ||
+            target.closest('.menu-header') !== null;
+
+        if (isHandle) {
             setIsDragging(true);
-            // Store the touch start position
             setStartY(e.touches[0].clientY);
-            // Store the current Y position
+            // Capture current Y from state directly, no need to read DOM
             setCurrentY(e.touches[0].clientY);
-            // Set the initial translateY to match current position
-            setTranslateY(`${currentY}px`);
-            // Reset velocity tracking
             setTouchVelocity(0);
             setLastTouchTimestamp(Date.now());
             setLastTouchY(e.touches[0].clientY);
-            // Mark the event as being handled by the drag system
             e.target.dataset.dragging = 'true';
         }
     };
 
-    // This function is now only used as a reference for the touchMoveHandler in useEffect
-    // We're not attaching it directly to any elements to avoid passive event listener issues
     const handleTouchMove = (e) => {
         if (!isDragging) return;
-        
-        // Get the current touch position
+
         const touchY = e.touches[0].clientY;
-        
-        // Calculate how far the touch has moved from the start
-        const deltaY = touchY - startY;
-        
-        // Get the current menu position
-        const menuElement = menuRef.current;
-        const currentTranslateY = window.getComputedStyle(menuElement).transform;
-        let currentY = 0;
-        
-        // Extract the current Y position from the transform matrix
-        if (currentTranslateY && currentTranslateY !== 'none') {
-            const matrix = new DOMMatrix(currentTranslateY);
-            currentY = matrix.m42; // Get the Y translation value
-        }
-        
-        // Calculate the new position with increased sensitivity (1.2x)
-        const newTranslateY = currentY + (touchY - currentY) * 1.2;
-        
-        // Apply constraints to keep the menu within bounds
-        const minTranslateY = 10; // Fully expanded position (10px from top)
-        const maxTranslateY = window.innerHeight - 220; // Collapsed position
-        
-        const constrainedTranslateY = Math.max(minTranslateY, Math.min(newTranslateY, maxTranslateY));
-        
-        // Update the menu position
-        setTranslateY(`${constrainedTranslateY}px`);
-        setCurrentY(touchY);
-        
-        // Calculate and update velocity
+        const deltaY = touchY - currentY; // Change since last event
+
+        // Calculate new position
+        // simple 1:1 movement follows finger exactly
+        let newTranslateY = translateY + deltaY;
+
+        // Constrain
+        newTranslateY = Math.max(EXPANDED_Y, Math.min(getCollapsedY(), newTranslateY));
+
+        setTranslateY(newTranslateY);
+        setCurrentY(touchY); // Update for next delta
+
+        // Velocity tracking
         const now = Date.now();
         const timeDelta = now - lastTouchTimestamp;
         if (timeDelta > 0) {
-            // Calculate pixels per millisecond
             const newVelocity = (lastTouchY - touchY) / timeDelta;
             setTouchVelocity(newVelocity);
             setLastTouchTimestamp(now);
             setLastTouchY(touchY);
         }
-        
-        // Prevent default only when we're actually dragging the menu
-        // This allows scrolling in the content area
+
         if (e.target.dataset.dragging === 'true' || e.target.closest('.menu-header')) {
             e.preventDefault();
         }
@@ -135,191 +144,218 @@ const BottomMenu = ({
 
     const handleTouchEnd = () => {
         if (!isDragging) return;
-        
+
         setIsDragging(false);
-        
-        // Get the current numeric position
-        const currentPosition = typeof translateY === 'string' && translateY.endsWith('px') 
-            ? parseFloat(translateY) 
-            : window.innerHeight - 220;
-        
-        // Determine threshold for snap (40% of the draggable area)
-        const windowHeight = window.innerHeight;
-        const expandedPosition = 10;
-        const collapsedPosition = windowHeight - 220;
-        const threshold = expandedPosition + (collapsedPosition - expandedPosition) * 0.4;
-        
-        // Check if we have a significant velocity (positive is downward, negative is upward)
+
+        const currentPosition = translateY;
+        const threshold = EXPANDED_Y + (collapsedY - EXPANDED_Y) * 0.4;
+
         const hasSignificantUpwardVelocity = touchVelocity > VELOCITY_THRESHOLD;
         const hasSignificantDownwardVelocity = touchVelocity < -VELOCITY_THRESHOLD;
-        
-        // Determine final state based on position and velocity
+
         let shouldExpand;
-        
+
         if (hasSignificantUpwardVelocity) {
-            // Fast upward flick - expand regardless of position
             shouldExpand = true;
-            console.log('Fast upward flick detected - expanding menu');
         } else if (hasSignificantDownwardVelocity) {
-            // Fast downward flick - collapse regardless of position
             shouldExpand = false;
-            console.log('Fast downward flick detected - collapsing menu');
         } else {
-            // No significant velocity - use position threshold
             shouldExpand = currentPosition < threshold;
         }
-        
-        // Snap to position based on decision
+
         if (shouldExpand) {
             setIsPanelExpanded(true);
-            setTranslateY(`${expandedPosition}px`);
+            setTranslateY(EXPANDED_Y);
         } else {
             setIsPanelExpanded(false);
-            setTranslateY(`${collapsedPosition}px`);
+            setTranslateY(collapsedY);
         }
-        
-        // Reset velocity
         setTouchVelocity(0);
     };
-    
-    // Update translateY when isPanelExpanded changes from outside
-    useEffect(() => {
-        if (isDragging) return; // Don't override during active drag
-        
-        setTranslateY(isPanelExpanded ? '50px' : 'calc(100% - 220px)');
-    }, [isPanelExpanded, isDragging]);
-    
-    // Add event listeners for touch events on the drag handle and menu header
+
+    // Add event listeners 
     useEffect(() => {
         const menuElement = menuRef.current;
         if (!menuElement) return;
 
-        // Get the drag handle and menu header elements
         const dragHandle = menuElement.querySelector('.drag-handle');
         const menuHeader = menuElement.querySelector('.menu-header');
-        
-        // Function to handle touch start on the drag handle or menu header
-        const touchStartHandler = (e) => {
-            handleTouchStart(e);
-        };
-        
-        // Function to handle touch move events
+
+        const touchStartHandler = (e) => handleTouchStart(e);
         const touchMoveHandler = (e) => {
+            // We need to attach this non-passively to prevent scroll
             if (!isDragging) return;
-            
-            // Only prevent default when we're actually dragging the menu
-            // This allows scrolling in the content area to work
-            e.preventDefault();
-            
-            // Get the current touch position
+            e.preventDefault(); // Critical for avoiding browser scroll while dragging
+            handleTouchMove(e);
+        };
+        // We also need a window level move handler if the finger leaves the element? 
+        // No, touchmove target is usually the element started on.
+        // But let's attach move/end to window to be safe? 
+        // Actually typical pattern is attaching move/end to window/document during drag.
+        // But here keeping it simple as per existing code structure which used element listeners. 
+        // We just need to make sure we call the latest closure state.
+        // Since we are using state values in the handler, relying on useEffect dependencies is tricky.
+        // Ideally we should use refs for mutable values during drag to avoid re-binding listeners on every render.
+        // But for now, let's just make sure the effect re-runs when drag state changes.
+        // Actually, pure React event handlers on the div might be smoother but we want non-passive.
+
+        // To properly handle closures with addEventListener in useEffect:
+        // We can't really access the *latest* state inside the listener unless we use refs.
+        // Since I rewrote the handlers to use state (translateY), they will be stale if I don't re-bind.
+        // The safest way without refs is using the function form of setState, but we need 'currentY' etc.
+        // Let's rely on the React ref pattern for values that change fast.
+
+        // HOWEVER, to avoid massive refactoring, I will just bind the listeners. 
+        // But wait, `handleTouchMove` uses `translateY` from state.
+        // If I bind it once, it captures initial `translateY`.
+        // I need to use a Ref for `translateY` and `currentY` to avoid stale closures in event listeners
+        // OR re-bind on change (expensive).
+
+        // Let's USE REFS for the drag logic variables to ensure performance and correctness.
+    }, [isDragging]); // Relying on the below Ref-based effect instead.
+
+    // Ref-based drag state to solve closure issues
+    const stateRef = useRef({
+        translateY: translateY,
+        currentY: currentY,
+        isDragging: isDragging,
+        lastTouchTimestamp: 0,
+        lastTouchY: 0,
+        touchVelocity: 0
+    });
+
+    // Keep ref synced
+    useEffect(() => {
+        stateRef.current.translateY = translateY;
+        stateRef.current.currentY = currentY;
+        stateRef.current.isDragging = isDragging;
+    }, [translateY, currentY, isDragging]);
+
+    // Re-implement the listeners using Refs to avoid re-binding
+    useEffect(() => {
+        const menuElement = menuRef.current;
+        if (!menuElement) return;
+
+        const onTouchStart = (e) => {
+            const target = e.target;
+            const isHandle = target.classList.contains('drag-handle') || target.closest('.menu-header') !== null;
+            if (!isHandle) return;
+
             const touchY = e.touches[0].clientY;
-            
-            // Get the current menu position from the style
-            const currentTranslateY = window.getComputedStyle(menuElement).transform;
-            let baseY = 0;
-            
-            // Extract the current Y position from the transform matrix
-            if (currentTranslateY && currentTranslateY !== 'none') {
-                const matrix = new DOMMatrix(currentTranslateY);
-                baseY = matrix.m42; // Get the Y translation value
-            } else {
-                // Fallback if transform is not set
-                baseY = isPanelExpanded ? 10 : window.innerHeight - 220;
-            }
-            
-            // Update the current touch position for reference
+            setIsDragging(true);
+            setStartY(touchY);
             setCurrentY(touchY);
-            
-            const windowHeight = window.innerHeight;
-            
-            // Calculate new position directly based on finger movement
-            // This ensures the menu follows the finger exactly
-            let newTranslateY = baseY + (touchY - currentY);
-            
-            // Apply constraints to keep the menu within bounds
-            newTranslateY = Math.max(10, Math.min(windowHeight - 220, newTranslateY));
-            
-            // Update the menu position immediately
-            setTranslateY(`${newTranslateY}px`);
-            
-            // Calculate and update velocity for inertia
+            stateRef.current.isDragging = true;
+            stateRef.current.currentY = touchY;
+            stateRef.current.lastTouchTimestamp = Date.now();
+            stateRef.current.lastTouchY = touchY;
+            stateRef.current.touchVelocity = 0;
+            // No need to set translateY here, it starts from whatever it is
+        };
+
+        const onTouchMove = (e) => {
+            if (!stateRef.current.isDragging) return;
+            e.preventDefault(); // Stop scrolling
+
+            const touchY = e.touches[0].clientY;
+            const deltaY = touchY - stateRef.current.currentY;
+            const currentTransY = stateRef.current.translateY;
+
+            let newTransY = currentTransY + deltaY;
+            newTransY = Math.max(EXPANDED_Y, Math.min(getCollapsedY(), newTransY));
+
+            // Update state and Ref
+            setTranslateY(newTransY);
+            setCurrentY(touchY); // This triggers re-render, verifying frame rate...
+
+            // Update refs immediately for next frame calc (though React state update is async, 
+            // we need to accumulate deltas correctly. 
+            // Actually, using delta from *previous frame* touch position is better.
+            stateRef.current.currentY = touchY;
+            // Note: setTranslateY is async, so stateRef.current.translateY won't update until effect runs.
+            // We must manually update the ref's "current effective translateY" for the next event *within this closure*?
+            // No, standard `delta` approach: delta is (TouchNow - TouchPrev). NewPos = OldPos + Delta.
+            // We need `OldPos` to be the up-to-date position. 
+            // So we should update stateRef.current.translateY immediately to `newTransY`.
+            stateRef.current.translateY = newTransY;
+
+            // Velocity
             const now = Date.now();
-            const timeDelta = now - lastTouchTimestamp;
+            const timeDelta = now - stateRef.current.lastTouchTimestamp;
             if (timeDelta > 0) {
-                // Calculate pixels per millisecond (negative is upward)
-                const newVelocity = (lastTouchY - touchY) / timeDelta;
-                setTouchVelocity(newVelocity);
-                setLastTouchTimestamp(now);
-                setLastTouchY(touchY);
-            }
-            
-            // Update current position reference for next move
-            setCurrentY(touchY);
-        };
-        
-        // Add passive touch start listeners for better performance
-        if (dragHandle) {
-            dragHandle.addEventListener('touchstart', touchStartHandler, { passive: true });
-        }
-        
-        if (menuHeader) {
-            menuHeader.addEventListener('touchstart', touchStartHandler, { passive: true });
-        }
-        
-        // Add non-passive touch move listener to the menu element
-        // This allows us to call preventDefault() when needed
-        menuElement.addEventListener('touchmove', touchMoveHandler, { passive: false });
-        
-        // Prevent touch events in the content area from being captured by the menu's drag handlers
-        const contentArea = menuScrollRef.current;
-        // Define contentTouchHandler outside the if block so it's accessible in the cleanup function
-        const contentTouchHandler = (e) => {
-            // Only if we're not already dragging the menu
-            if (!isDragging) {
-                // Stop propagation to prevent the menu's handlers from capturing this event
-                e.stopPropagation();
+                const newVel = (stateRef.current.lastTouchY - touchY) / timeDelta;
+                stateRef.current.touchVelocity = newVel;
+                stateRef.current.lastTouchTimestamp = now;
+                stateRef.current.lastTouchY = touchY;
             }
         };
-        
-        if (contentArea) {
-            contentArea.addEventListener('touchstart', contentTouchHandler, { passive: true });
-            contentArea.addEventListener('touchmove', contentTouchHandler, { passive: true });
-        }
-        
+
+        const onTouchEnd = () => {
+            if (!stateRef.current.isDragging) return;
+            setIsDragging(false);
+
+            const currentPos = stateRef.current.translateY;
+            const vel = stateRef.current.touchVelocity;
+            const threshold = EXPANDED_Y + (getCollapsedY() - EXPANDED_Y) * 0.4;
+
+            let expand = false;
+            if (vel > VELOCITY_THRESHOLD) expand = true;
+            else if (vel < -VELOCITY_THRESHOLD) expand = false;
+            else expand = currentPos < threshold;
+
+            if (expand) {
+                setIsPanelExpanded(true);
+                setTranslateY(EXPANDED_Y);
+            } else {
+                setIsPanelExpanded(false);
+                setTranslateY(getCollapsedY());
+            }
+        };
+
+        menuElement.addEventListener('touchstart', onTouchStart, { passive: true });
+        menuElement.addEventListener('touchmove', onTouchMove, { passive: false });
+        menuElement.addEventListener('touchend', onTouchEnd);
+
         return () => {
-            // Clean up event listeners
-            if (dragHandle) {
-                dragHandle.removeEventListener('touchstart', touchStartHandler);
-            }
-            
-            if (menuHeader) {
-                menuHeader.removeEventListener('touchstart', touchStartHandler);
-            }
-            
-            menuElement.removeEventListener('touchmove', touchMoveHandler);
-            
-            if (contentArea) {
-                contentArea.removeEventListener('touchstart', contentTouchHandler);
-                contentArea.removeEventListener('touchmove', contentTouchHandler);
-            }
+            menuElement.removeEventListener('touchstart', onTouchStart);
+            menuElement.removeEventListener('touchmove', onTouchMove);
+            menuElement.removeEventListener('touchend', onTouchEnd);
         };
-    }, [isDragging, isPanelExpanded, startY, currentY, lastTouchY, lastTouchTimestamp, touchVelocity, menuScrollRef]);
-    
-    // This useEffect is no longer needed as we've integrated content area handling
-    // into the main touch event useEffect above
+    }, []); // Run once! using Refs for state
+
+
+    const indexOfLastCard = currentPage * cardsPerPage;
+    const indexOfFirstCard = indexOfLastCard - cardsPerPage;
+    const currentCards = bottomMenuStops.slice(indexOfFirstCard, indexOfLastCard);
+    const totalPages = Math.ceil(bottomMenuStops.length / cardsPerPage);
 
     return (
-        <div 
+        <div
             ref={menuRef}
-            className="absolute bottom-0 left-0 right-0 z-[70] touch-none"
+            className="absolute z-[70] touch-none"
             style={{
-                transform: `translateY(${translateY})`,
-                transition: isDragging ? 'none' : 'transform 500ms cubic-bezier(0.23, 1, 0.32, 1)', // iOS-like easing
-                willChange: 'transform' // Optimize for animations
+                bottom: `${bottomGap}px`,
+                left: `${sideMargin}px`,
+                right: `${sideMargin}px`,
+                height: `${dynamicHeight}px`,
+                transition: isDragging ? 'none' : 'height 500ms cubic-bezier(0.23, 1, 0.32, 1), bottom 500ms cubic-bezier(0.23, 1, 0.32, 1), left 500ms cubic-bezier(0.23, 1, 0.32, 1), right 500ms cubic-bezier(0.23, 1, 0.32, 1)',
+                willChange: 'height, bottom, left, right',
+                backfaceVisibility: 'hidden',
+                WebkitBackfaceVisibility: 'hidden',
+                perspective: 1000,
             }}
-            onTouchEnd={handleTouchEnd}>
-            <div className="w-full h-[calc(100vh-80px)] max-w-3xl mx-auto flex flex-col glass-effect rounded-t-3xl shadow-2xl overflow-hidden">
-                <div className="p-3 text-center text-gray-300 border-b border-gray-700/60 menu-header cursor-grab active:cursor-grabbing">
+        // Events attached via ref
+        >
+            <div
+                className={`w-full h-full flex flex-col glass-effect shadow-2xl overflow-hidden`}
+                style={{
+                    borderTopLeftRadius: `${topRadius}px`,
+                    borderTopRightRadius: `${topRadius}px`,
+                    borderBottomLeftRadius: `${bottomRadius}px`,
+                    borderBottomRightRadius: `${bottomRadius}px`,
+                }}
+            >
+                <div className="p-3 px-5 text-center text-gray-300 border-b border-gray-700/60 menu-header cursor-grab active:cursor-grabbing shrink-0">
                     <div className="relative">
                         <div className="w-12 h-1.5 bg-gray-600 rounded-full mx-auto mb-1 drag-handle"></div>
                         {userLocation && (
@@ -338,8 +374,11 @@ const BottomMenu = ({
                             />
                         </button>
                     </div>
-                    <span className="text-sm font-semibold block">
+                    <span className="text-sm font-semibold flex items-center justify-center gap-2">
                         {searchTerm ? "Search Results" : "Nearby Stations"}
+                        {isLoading && bottomMenuStops.length > 0 && (
+                            <div className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                        )}
                     </span>
                     {isWaitingForLocation && locationWaitRemainingSec != null && (
                         <div className="mt-1 text-xs text-gray-300">
@@ -349,7 +388,7 @@ const BottomMenu = ({
                 </div>
 
                 <div className="flex-grow overflow-y-auto overscroll-contain" ref={menuScrollRef}>
-                    {isLoading ? (
+                    {isLoading && bottomMenuStops.length === 0 ? (
                         <div className="flex flex-col items-center justify-center p-2">
                             <LoadingScreen secondaryText={null} />
                         </div>
@@ -371,7 +410,7 @@ const BottomMenu = ({
                 </div>
 
                 {totalPages > 1 && isPanelExpanded && (
-                    <div className={`flex-shrink-0 border-t border-gray-700/60${isStandalone ? ' pb-8' : ''}`}>
+                    <div className={`flex-shrink-0 border-t border-gray-700/60${isStandalone ? ' py-4' : ' py-4'}`}>
                         <Pagination
                             currentPage={currentPage}
                             totalPages={totalPages}

@@ -1,8 +1,17 @@
 import React, { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import stationBoxIcon from '../assets/stationbox.png';
 import busStationBoxIcon from '../assets/busstationbox.png';
+import stationBoxIcon from '../assets/stationbox.png';
+import nightIcon from '../assets/night-icon.png';
+// Import generated colored icons & SVGs
+import tramIcon from '../assets/tram-icon.png';
+import metroAIcon from '../assets/metroA_v2.svg';
+import metroBIcon from '../assets/metroB_v2.svg';
+import metroCIcon from '../assets/metroC_v2.svg';
+import trainIcon from '../assets/train-icon.png';
+import ferryIcon from '../assets/ferry-icon.png';
+import trolleybusIcon from '../assets/trolleybus-icon.png';
 
 const DEFAULT_CENTER = [14.4378, 50.0755]; // Prague
 const DEFAULT_ZOOM = 16;
@@ -33,7 +42,7 @@ function selectedToGeoJSON(stop) {
   return {
     type: 'FeatureCollection',
     features: stop && stop.lat !== undefined && stop.lon !== undefined && !isNaN(stop.lat) && !isNaN(stop.lon)
-      ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: [stop.lon, stop.lat] }, properties: { id: stop.uniqueStopPointId } }]
+      ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: [stop.lon, stop.lat] }, properties: { ...stop, id: stop.uniqueStopPointId } }]
       : []
   };
 }
@@ -51,8 +60,8 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
     const center = selectedStop && selectedStop.lat !== undefined && selectedStop.lon !== undefined && !isNaN(selectedStop.lat) && !isNaN(selectedStop.lon)
       ? [selectedStop.lon, selectedStop.lat]
       : (userLocation && userLocation.latitude !== undefined && userLocation.longitude !== undefined
-          ? [userLocation.longitude, userLocation.latitude]
-          : DEFAULT_CENTER);
+        ? [userLocation.longitude, userLocation.latitude]
+        : DEFAULT_CENTER);
 
     const style = {
       version: 8,
@@ -91,23 +100,56 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
       style,
       center,
       zoom: DEFAULT_ZOOM,
-      attributionControl: false
+      attributionControl: false,
+      dragRotate: false, // Disable right-click drag rotation
+      touchPitch: false  // Disable touch pitch (often confusing with 2D maps)
     });
+
+    // Disable pinch-to-rotate specific behavior while keeping pinch-to-zoom
+    map.touchZoomRotate.disableRotation();
+
     mapRef.current = map;
 
-    map.once('load', async () => {
+    // Fix for map going black or losing context on resume/resize
+    const handleMapResize = () => {
       try {
-        // Add images
+        if (map) {
+          map.resize();
+          map.triggerRepaint();
+        }
+      } catch (e) {
+        // failed to resize
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Small delay to ensure container is ready
+        setTimeout(handleMapResize, 100);
+      }
+    };
+
+    map.on('load', async () => {
+      try {
         const loadImage = (name, url) => new Promise((resolve) => {
-          const img = new Image(48, 48);
+          const img = new Image(48, 48); // Standardize to 48x48 for all, including SVGs
           img.crossOrigin = 'anonymous';
           img.src = url;
           img.onload = () => { if (!map.hasImage(name)) map.addImage(name, img); resolve(); };
           img.onerror = () => resolve();
         });
+
         await Promise.all([
           loadImage('bus-icon', busStationBoxIcon),
-          loadImage('station-icon', stationBoxIcon)
+          loadImage('station-icon', stationBoxIcon),
+          loadImage('night-icon', nightIcon),
+          loadImage('tram-icon', tramIcon),
+          loadImage('metroA-icon', metroAIcon),
+          loadImage('metroB-icon', metroBIcon),
+          loadImage('metroC-icon', metroCIcon),
+          loadImage('train-icon', trainIcon),
+          loadImage('ferry-icon', ferryIcon),
+          loadImage('trolleybus-icon', trolleybusIcon)
         ]);
 
         // Add rounded-square overlay image for selected stop
@@ -134,41 +176,95 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
           ctx.closePath();
           ctx.fill();
           const imageData = ctx.getImageData(0, 0, overlaySize, overlaySize);
-          try { map.addImage('selected-stop-overlay', imageData); } catch {}
+          try { map.addImage('selected-stop-overlay', imageData); } catch { }
         }
 
-        // Stops source and layers
+        // --- LAYER ORDERING STRATEGY ---
+        // 1. Selected Stop Icons (Bottom) - to be covered by darkener
+        // 2. Selected Stop Darkener (Middle) - covers selected stop
+        // 3. All Other Stops (Top) - drawn 'fresh' on top of any darkeners beneath them.
+
+        map.addSource('selected-stop', { type: 'geojson', data: selectedToGeoJSON(selectedStop) });
+
+        // 1. Selected Stop Icon (Universal - rendered UNDER the darkener)
+        map.addLayer({
+          id: 'selected-stop-bus',
+          type: 'symbol',
+          source: 'selected-stop',
+          layout: {
+            'icon-image': [
+              'case',
+              ['to-boolean', ['get', 'is_night']], 'night-icon',
+              ['match', ['get', 'mainTrafficType'],
+                'tram', 'tram-icon',
+                'metroA', 'metroA-icon',
+                'metroB', 'metroB-icon',
+                'metroC', 'metroC-icon',
+                'train', 'train-icon',
+                'ferry', 'ferry-icon',
+                'trolleybus', 'trolleybus-icon',
+                'bus-icon' // Default
+              ]
+            ],
+            'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 16, 1],
+            'icon-allow-overlap': true,
+            'icon-ignore-placement': true
+          },
+          paint: {
+            'icon-opacity': 0, // Start invisible, fade in
+            'icon-opacity-transition': { duration: 300 }
+          }
+        });
+
+        // 2. Darkener (Middle)
+        map.addLayer({
+          id: 'selected-stop-darkener',
+          type: 'symbol',
+          source: 'selected-stop',
+          layout: {
+            'icon-image': 'selected-stop-overlay',
+            'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 16, 1],
+            'icon-anchor': 'center',
+            'icon-allow-overlap': true,
+            'icon-ignore-placement': true
+          },
+          paint: {
+            'icon-opacity': 0, // Start invisible, fade in
+            'icon-opacity-transition': { duration: 300 }
+          }
+        });
+
+        // 3. Main Stops (All stops as Bus Icons)
         map.addSource('stops', { type: 'geojson', data: stopsToGeoJSON(stops) });
+
         map.addLayer({
           id: 'bus-stops',
           type: 'symbol',
           source: 'stops',
-          filter: ['==', ['get', 'mainTrafficType'], 'bus'],
+          // No filter = show ALL stops
           layout: {
-            'icon-image': 'bus-icon',
-            'icon-size': 1,
+            'icon-image': [
+              'case',
+              ['to-boolean', ['get', 'is_night']], 'night-icon',
+              ['match', ['get', 'mainTrafficType'],
+                'tram', 'tram-icon',
+                'metroA', 'metroA-icon',
+                'metroB', 'metroB-icon',
+                'metroC', 'metroC-icon',
+                'train', 'train-icon',
+                'ferry', 'ferry-icon',
+                'trolleybus', 'trolleybus-icon',
+                'bus-icon' // Default
+              ]
+            ],
+            'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 16, 1],
             'icon-allow-overlap': true,
             'icon-ignore-placement': true
-          }
-        });
-        map.addLayer({
-          id: 'station-stops',
-          type: 'symbol',
-          source: 'stops',
-          filter: ['!=', ['get', 'mainTrafficType'], 'bus'],
-          layout: {
-            'icon-image': 'station-icon',
-            'icon-size': 1,
-            'icon-allow-overlap': true,
-            'icon-ignore-placement': true,
-            'text-field': ['get', 'platform'],
-            'text-size': 14,
-            'text-offset': [0, 0]
           },
           paint: {
-            'text-color': '#ffffff',
-            'text-halo-color': '#000000',
-            'text-halo-width': 1
+            'icon-opacity': 1,
+            'icon-opacity-transition': { duration: 300 }
+            // 'icon-color' removed, using icon-image match instead
           }
         });
 
@@ -187,20 +283,18 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
           }
         });
 
-        // Selected stop darkener overlay
-        map.addSource('selected-stop', { type: 'geojson', data: selectedToGeoJSON(selectedStop) });
-        map.addLayer({
-          id: 'selected-stop-darkener',
-          type: 'symbol',
-          source: 'selected-stop',
-          layout: {
-            'icon-image': 'selected-stop-overlay',
-            'icon-size': 1,
-            'icon-anchor': 'center',
-            'icon-allow-overlap': true,
-            'icon-ignore-placement': true
-          }
-        });
+        // Update opacity for the first time if selectedStop exists
+        if (selectedStop && selectedStop.uniqueStopPointId) {
+          const id = selectedStop.uniqueStopPointId;
+          try {
+            // Cross-Fade: Main Out, Selected In
+            map.setPaintProperty('bus-stops', 'icon-opacity', ['case', ['==', ['get', 'uniqueStopPointId'], id], 0, 1]);
+
+            map.setPaintProperty('selected-stop-bus', 'icon-opacity', 1);
+            map.setPaintProperty('selected-stop-darkener', 'icon-opacity', 1);
+          } catch { }
+        }
+
 
         // Click handlers are managed by a top-level effect; removed nested hook.
         // Movement monitoring and throttled fetch
@@ -228,8 +322,13 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
       }
     });
 
+    window.addEventListener('resize', handleMapResize);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
-      try { map.remove(); } catch {}
+      window.removeEventListener('resize', handleMapResize);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      try { map.remove(); } catch { }
     };
   }, []);
 
@@ -255,6 +354,28 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
     if (!map) return;
     const src = map.getSource && map.getSource('selected-stop');
     if (src && src.setData) src.setData(selectedToGeoJSON(selectedStop));
+
+    // Update OPACITY on main layers to hide selected stop smoothly (instead of filtering/blinking)
+    const id = selectedStop?.uniqueStopPointId;
+    if (id) {
+      try {
+        // Cross-Fade: Main Out, Selected In
+        map.setPaintProperty('bus-stops', 'icon-opacity', ['case', ['==', ['get', 'uniqueStopPointId'], id], 0, 1]);
+
+        map.setPaintProperty('selected-stop-bus', 'icon-opacity', 1);
+        map.setPaintProperty('selected-stop-darkener', 'icon-opacity', 1);
+      } catch { }
+    } else {
+      // Reset opacity if no selection
+      try {
+        // Cross-Fade: Main In, Selected Out
+        map.setPaintProperty('bus-stops', 'icon-opacity', 1);
+
+        map.setPaintProperty('selected-stop-bus', 'icon-opacity', 0);
+        map.setPaintProperty('selected-stop-darkener', 'icon-opacity', 0);
+      } catch { }
+    }
+
   }, [selectedStop]);
 
   // Stop click handlers effect
@@ -264,12 +385,8 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
 
     const detach = () => {
       if (busClickHandlerRef.current) {
-        try { map.off('click', 'bus-stops', busClickHandlerRef.current); } catch {}
+        try { map.off('click', 'bus-stops', busClickHandlerRef.current); } catch { }
         busClickHandlerRef.current = null;
-      }
-      if (stationClickHandlerRef.current) {
-        try { map.off('click', 'station-stops', stationClickHandlerRef.current); } catch {}
-        stationClickHandlerRef.current = null;
       }
     };
 
@@ -283,13 +400,11 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
         if (stop && typeof onStopSelect === 'function') onStopSelect(stop);
       };
       busClickHandlerRef.current = handler;
-      stationClickHandlerRef.current = handler;
-      try { map.on('click', 'bus-stops', busClickHandlerRef.current); } catch {}
-      try { map.on('click', 'station-stops', stationClickHandlerRef.current); } catch {}
+      try { map.on('click', 'bus-stops', busClickHandlerRef.current); } catch { }
     };
 
     const ensureLayersAndAttach = () => {
-      if (!map.getLayer('bus-stops') || !map.getLayer('station-stops')) return false;
+      if (!map.getLayer('bus-stops')) return false;
       detach();
       attach();
       return true;
@@ -298,10 +413,10 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
     if (!ensureLayersAndAttach()) {
       const onceIdle = () => {
         ensureLayersAndAttach();
-        try { map.off('idle', onceIdle); } catch {}
+        try { map.off('idle', onceIdle); } catch { }
       };
       map.on('idle', onceIdle);
-      return () => { try { map.off('idle', onceIdle); } catch {} detach(); };
+      return () => { try { map.off('idle', onceIdle); } catch { } detach(); };
     }
 
     return () => detach();
@@ -341,7 +456,7 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
         if (socket && typeof socket.emit === 'function') {
           socket.emit('searchStops', { lat: c.lat, lon: c.lng, timestamp: Date.now(), source: 'periodic' });
         }
-      } catch {}
+      } catch { }
     }, 120000);
     return () => clearInterval(id);
   }, [socket]);

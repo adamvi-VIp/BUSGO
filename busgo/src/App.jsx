@@ -16,16 +16,16 @@ const Arrival = ({ arrival }) => {
 
     useEffect(() => {
         let departureTimestamp = departure_timestamp?.predicted ||
-                               departure_timestamp?.scheduled;
-        
+            departure_timestamp?.scheduled;
+
         if (!departureTimestamp) {
             setRemainingTime(null);
             return;
         }
-        
+
         const calculateRemaining = () => {
             let arrivalTime;
-            
+
             if (typeof departureTimestamp === 'string') {
                 const parsed = new Date(departureTimestamp);
                 if (isNaN(parsed.getTime())) {
@@ -51,7 +51,7 @@ const Arrival = ({ arrival }) => {
                 setRemainingTime(null);
                 return;
             }
-            
+
             const now = Date.now();
             setRemainingTime(Math.max(0, arrivalTime - now));
         };
@@ -67,7 +67,7 @@ const Arrival = ({ arrival }) => {
         const hours = Math.floor(totalSeconds / 3600);
         const minutes = Math.floor((totalSeconds % 3600) / 60);
         const seconds = totalSeconds % 60;
-        
+
         if (hours > 0) {
             return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         } else {
@@ -79,10 +79,10 @@ const Arrival = ({ arrival }) => {
         if (delayInSeconds === null || delayInSeconds === undefined) {
             return null;
         }
-        
+
         const minutes = Math.floor(Math.abs(delayInSeconds) / 60);
         const seconds = Math.abs(delayInSeconds) % 60;
-        
+
         if (delayInSeconds > 0) {
             return `+${minutes}:${seconds.toString().padStart(2, '0')}`;
         } else if (delayInSeconds < 0) {
@@ -94,7 +94,7 @@ const Arrival = ({ arrival }) => {
 
     const delayString = formatDelay(arrival?.delay?.seconds);
     const isDeparting = remainingTime !== null && remainingTime <= 60000 && remainingTime > 0;
-    
+
     const getDelayColor = (delayInSeconds) => {
         if (delayInSeconds === null || delayInSeconds === undefined) return '';
         if (delayInSeconds === 0) return 'text-green-400';
@@ -102,7 +102,7 @@ const Arrival = ({ arrival }) => {
         if (delayInSeconds < 0) return 'text-blue-400';
         return '';
     };
-    
+
     const delayColor = getDelayColor(arrival?.delay?.seconds);
 
     // In Arrival component, only render the time if it is not null and not 'N/A'.
@@ -177,7 +177,12 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) =>
                 >
                     <header className="flex items-center justify-between p-4 border-b border-gray-700/50 flex-shrink-0">
                         <div className="flex-1">
-                            <h2 className="m-0 text-lg font-semibold text-white truncate">{name}</h2>
+                            <div className="flex items-center gap-2">
+                                <h2 className="m-0 text-lg font-semibold text-white truncate">{name}</h2>
+                                {isLoadingRealTime && (
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                )}
+                            </div>
                             <div className="flex items-center gap-3 text-xs text-gray-400 mt-1">
                                 <span>Platform {platform || 'N/A'}</span>
                                 <span>Zone {zone}</span>
@@ -197,7 +202,7 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) =>
 
                     {/* Only this div scrolls */}
                     <div className="overflow-y-auto p-4 flex-1" style={{ maxHeight: 'calc(100vh - 340px)' }}>
-                        {isLoadingRealTime && !realTimeData && <LoadingScreen />}
+                        {/* Removed blocking LoadingScreen */}
                         {error && <div className="text-center text-red-400 p-4 bg-red-500/10 rounded-xl text-sm">{error.error}</div>}
                         {realTimeData && (
                             hasDepartures ? (
@@ -229,7 +234,8 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) =>
                                             } else {
                                                 return false;
                                             }
-                                            return arrivalTime - now > 0;
+                                            // Relaxed filter: show buses up to 1 minute "ago" to prevent instant disappearing
+                                            return arrivalTime - now > -60000;
                                         })
                                         .reduce((acc, arrival) => {
                                             const line = arrival.route?.short_name || 'Unknown';
@@ -370,17 +376,19 @@ function App() {
                 const stop = JSON.parse(stored);
                 if (stop && stop.gtfsId) {
                     // Only prevent duplicate emits if we're currently loading for this station
-                    if (lastRequestedStopIdRef.current === stop.gtfsId && isLoadingRealTime) return;
+                    // if (lastRequestedStopIdRef.current === stop.gtfsId && isLoadingRealTime) return; // Allow re-request to refresh
                     lastRequestedStopIdRef.current = stop.gtfsId;
                     setIsLoadingRealTime(true);
-                    setRealTimeData(null);
+                    // DO NOT clear realTimeData here to prevent flashing
+                    // setRealTimeData(null); 
                     console.log('[REOPEN] Requesting latest data for monitored station:', stop.name, stop.gtfsId);
                     socket.emit('requestDepartures', stop.gtfsId);
                     if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
                     departureTimeoutRef.current = setTimeout(() => {
                         if (isLoadingRealTime) {
                             setIsLoadingRealTime(false);
-                            setErrors(prev => [...prev, 'Departure data loading timed out after reconnect. Please try again.']);
+                            // Do not show error if we have stale data, just stop loading
+                            // setErrors(prev => [...prev, 'Departure data loading timed out after reconnect. Please try again.']);
                         }
                     }, 10000);
                 }
@@ -397,17 +405,17 @@ function App() {
 
     useEffect(() => {
         /**
-         * Handles incoming stop data from the server.
-         * This function now differentiates between data for the main list (bottom menu)
-         * and data that should only be added to the map (from map movements).
-         * * This relies on the backend echoing a 'source' property in the response,
-         * which is set to 'map-movement' by the MapLocationTracker component.
-         */
+            * Handles incoming stop data from the server.
+            * This function now differentiates between data for the main list (bottom menu)
+            * and data that should only be added to the map (from map movements).
+            * * This relies on the backend echoing a 'source' property in the response,
+            * which is set to 'map-movement' by the MapLocationTracker component.
+            */
         const handleStopsData = (response) => {
             // Defensively check if the response is an array (old behavior)
             // or an object with a 'source' property (new behavior).
             const isObjectResponse = typeof response === 'object' && response !== null && !Array.isArray(response) && response.stops;
-            
+
             const newStops = isObjectResponse ? response.stops : response;
             const source = isObjectResponse ? response.source : null;
 
@@ -452,6 +460,17 @@ function App() {
 
         const handleDepartureData = (data) => {
             if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
+
+            // Robustness check: If we receive absolutely nothing useful, don't clear the screen.
+            // Exception: If the server explicitly says "no departures" (empty array), we typically trust it,
+            // BUT the user reported vanishing data. So if we have data and receive empty, we might want to be careful.
+            // For now, let's just protect against null/undefined or malformed objects.
+            if (!data || typeof data !== 'object') {
+                console.warn('Received invalid departure data, ignoring to preserve cache.');
+                setIsLoadingRealTime(false);
+                return;
+            }
+
             setRealTimeData(data);
             setIsLoadingRealTime(false);
         };
@@ -536,7 +555,7 @@ function App() {
                             stopPermissionMonitor();
                         }
                     }
-                } catch {}
+                } catch { }
             }, PERMISSION_RECHECK_FAST_MS);
         };
 
@@ -595,7 +614,7 @@ function App() {
                             options
                         );
                     }
-                } catch {}
+                } catch { }
             }, (error) => {
                 // Handle temporary limitations
                 const tempLimitation = error.code === error.POSITION_UNAVAILABLE || error.code === error.TIMEOUT;
@@ -831,16 +850,16 @@ function App() {
     useEffect(() => {
         let isReconnecting = false;
         let lastRequestTime = 0;
-        
+
         // Helper to re-request stops and departures
         const reRequestData = () => {
             const now = Date.now();
             if (isReconnecting || (now - lastRequestTime) < 2000) return; // Prevent duplicate requests within 2 seconds
             isReconnecting = true;
             lastRequestTime = now;
-            
+
             console.log('[RECONNECT] Requesting data...');
-            
+
             // Preserve current search state on reconnect
             if (searchTerm && searchTerm.length > 0) {
                 console.log('Emitting searchStops from App.jsx', { query: searchTerm, timestamp: Date.now() });
@@ -870,28 +889,29 @@ function App() {
                 socket.emit('requestDepartures', selectedStop.gtfsId);
                 lastRequestedStopIdRef.current = selectedStop.gtfsId;
                 setIsLoadingRealTime(true);
-                setRealTimeData(null);
+                // DO NOT clear realTimeData here
+                // setRealTimeData(null);
                 if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
                 departureTimeoutRef.current = setTimeout(() => {
                     if (isLoadingRealTime) {
                         setIsLoadingRealTime(false);
-                        setErrors(prev => [...prev, 'Departure data loading timed out after reconnect. Please try again.']);
+                        // setErrors(prev => [...prev, 'Departure data loading timed out after reconnect. Please try again.']);
                     }
                 }, 10000);
             }
-            
+
             // Reset flag after a delay
             setTimeout(() => {
                 isReconnecting = false;
             }, 2000);
         };
-        
+
         // On socket reconnect
         const onConnect = () => {
             reRequestData();
         };
         socket.on('connect', onConnect);
-        
+
         // On tab visibility
         const onVisibility = () => {
             if (document.visibilityState === 'visible') {
@@ -900,7 +920,8 @@ function App() {
             }
         };
         document.addEventListener('visibilitychange', onVisibility);
-        
+
+        // On mount, if selectedStop exists, re-monitor it (in case of reload)
         // On mount, if selectedStop exists, re-monitor it (in case of reload)
         if (
             selectedStop &&
@@ -909,31 +930,32 @@ function App() {
             socket.emit('requestDepartures', selectedStop.gtfsId);
             lastRequestedStopIdRef.current = selectedStop.gtfsId;
             setIsLoadingRealTime(true);
-            setRealTimeData(null);
+            // DO NOT clear realTimeData
+            // setRealTimeData(null);
             if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
             departureTimeoutRef.current = setTimeout(() => {
                 if (isLoadingRealTime) {
                     setIsLoadingRealTime(false);
-                    setErrors(prev => [...prev, 'Departure data loading timed out after reconnect. Please try again.']);
+                    // setErrors(prev => [...prev, 'Departure data loading timed out after reconnect. Please try again.']);
                 }
             }, 10000);
         }
-        
+
         return () => {
             socket.off('connect', onConnect);
             document.removeEventListener('visibilitychange', onVisibility);
         };
-            }, [userLocation, searchTerm, locationPermissionStatus, selectedStop, requestLatestMonitoredStation]); // Added locationPermissionStatus to dependencies
+    }, [userLocation, searchTerm, locationPermissionStatus, selectedStop, requestLatestMonitoredStation]); // Added locationPermissionStatus to dependencies
 
     const handleSearchChange = useCallback((event) => {
         const newSearchTerm = event.target.value;
         setSearchTerm(newSearchTerm);
-        
+
         if (selectedStop) {
             socket.emit('stopDepartureMonitoring', selectedStop.gtfsId);
             setSelectedStop(null);
         }
-        
+
         setIsPanelExpanded(newSearchTerm.length > 0);
 
         if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
@@ -941,8 +963,8 @@ function App() {
         debounceTimeout.current = setTimeout(() => {
             setIsLoading(true);
             if (newSearchTerm.length > 0) {
-                 console.log('Emitting searchStops from App.jsx', { query: newSearchTerm, timestamp: Date.now() });
-                 socket.emit('searchStops', { query: newSearchTerm, timestamp: Date.now() });
+                console.log('Emitting searchStops from App.jsx', { query: newSearchTerm, timestamp: Date.now() });
+                socket.emit('searchStops', { query: newSearchTerm, timestamp: Date.now() });
             } else {
                 // When search is cleared via keyboard, immediately show nearby stations
                 if (userLocation && locationPermissionStatus === 'granted') {
@@ -955,21 +977,21 @@ function App() {
                 // If locationPermissionStatus is still 'pending', don't request anything yet
             }
         }, 300);
-            }, [selectedStop, userLocation, locationPermissionStatus]);
+    }, [selectedStop, userLocation, locationPermissionStatus]);
 
     const handleStopSelect = (stop) => {
         // Prevent duplicate requests for the same stop only if we're not in a loading state
         if (selectedStop && selectedStop.gtfsId === stop.gtfsId && !isLoadingRealTime) {
             return;
         }
-        
+
         if (selectedStop && selectedStop.gtfsId !== stop.gtfsId) {
             socket.emit('stopDepartureMonitoring', selectedStop.gtfsId);
         }
         setSelectedStop(stop);
         setIsPanelExpanded(false);
         setIsLoadingRealTime(true);
-        setRealTimeData(null);
+        setRealTimeData(null); // Clear only on explicit new selection
         socket.emit('requestDepartures', stop.gtfsId);
         lastRequestedStopIdRef.current = stop.gtfsId;
         if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
@@ -993,7 +1015,7 @@ function App() {
             }
         }, 100);
     };
-    
+
     const handleCloseModal = () => {
         if (selectedStop) {
             socket.emit('stopDepartureMonitoring', selectedStop.gtfsId);
@@ -1011,7 +1033,7 @@ function App() {
 
     const forceRefresh = () => {
         refreshInProgressRef.current = true;
-        setBottomMenuStops([]);
+        // setBottomMenuStops([]); // Removed to preserve existing stops
         // setMapStops([]); // removed to preserve existing map stops for merging
         setSearchTerm('');
         setIsPanelExpanded(false);
@@ -1068,8 +1090,8 @@ function App() {
     }, []);
 
     // Detect standalone mode once at render
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
-      window.navigator.standalone === true;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+        window.navigator.standalone === true;
 
     // This check is now more reliable because the native code injects the variable.
     const isAndroidApp = !!window.IS_ANDROID_APP;
@@ -1091,9 +1113,12 @@ function App() {
         try {
             const cached = localStorage.getItem(STATION_CACHE_KEY);
             if (cached) {
-                const { stop, openedAt } = JSON.parse(cached);
+                const { stop, openedAt, realTimeData: cachedData } = JSON.parse(cached);
                 if (stop && openedAt && Date.now() - openedAt < STATION_CACHE_MAX_AGE) {
                     setSelectedStop(stop);
+                    if (cachedData) {
+                        setRealTimeData(cachedData);
+                    }
                     // Fetch stops around user's location (if available)
                     const isValidLatLon = stop.lat !== undefined && stop.lon !== undefined && !isNaN(stop.lat) && !isNaN(stop.lon);
                     if (navigator.geolocation) {
@@ -1134,23 +1159,27 @@ function App() {
                     localStorage.removeItem(STATION_CACHE_KEY);
                 }
             }
-        } catch {}
+        } catch { }
     }, []);
 
     // When station modal is opened, cache with timestamp
     useEffect(() => {
         if (selectedStop) {
-            localStorage.setItem(STATION_CACHE_KEY, JSON.stringify({ stop: selectedStop, openedAt: Date.now() }));
+            localStorage.setItem(STATION_CACHE_KEY, JSON.stringify({
+                stop: selectedStop,
+                openedAt: Date.now(),
+                realTimeData: realTimeData // Persist the departures too
+            }));
         } else {
             localStorage.removeItem(STATION_CACHE_KEY);
         }
-    }, [selectedStop]);
+    }, [selectedStop, realTimeData]); // Added realTimeData dep
 
     // Clear geolocation watcher on unmount
     useEffect(() => {
         return () => {
             if (geoWatchIdRef.current != null) {
-                try { navigator.geolocation.clearWatch(geoWatchIdRef.current); } catch {}
+                try { navigator.geolocation.clearWatch(geoWatchIdRef.current); } catch { }
                 geoWatchIdRef.current = null;
             }
         };
@@ -1173,10 +1202,10 @@ function App() {
                 backgroundColor: '#0a0a0a', // Add the dark background color
             }}
         >
-            <MapGL 
-                stops={mapStops} 
-                userLocation={userLocation} 
-                onStopSelect={handleStopSelect} 
+            <MapGL
+                stops={mapStops}
+                userLocation={userLocation}
+                onStopSelect={handleStopSelect}
                 selectedStop={selectedStop}
                 socket={socket}
                 isRefreshing={isRefreshing}
@@ -1235,7 +1264,7 @@ function App() {
                 searchTerm={searchTerm}
                 isPanelExpanded={isPanelExpanded}
                 setIsPanelExpanded={setIsPanelExpanded}
-                                currentPage={currentPage}
+                currentPage={currentPage}
                 setCurrentPage={setCurrentPage}
                 selectedStop={selectedStop}
                 handleStopSelect={handleStopSelect}
@@ -1258,12 +1287,12 @@ function App() {
             )}
             <ErrorsSection errors={errors.filter(e => !e.stopId)} removeError={removeError} />
             {/* PWA Install Prompt */}
-            <PWAInstallPrompt 
-                isVisible={showPWAInstall} 
+            <PWAInstallPrompt
+                isVisible={showPWAInstall}
                 onClose={() => {
                     setShowPWAInstall(false);
                     setPwaPromptDismissed(true);
-                }} 
+                }}
             />
         </div>
     );
