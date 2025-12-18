@@ -7,6 +7,7 @@ import iceIcon from './assets/ice.svg';
 import SplashScreen from './components/SplashScreen';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import MapGL from './components/MapGL';
+import VersionManager from './components/VersionManager';
 
 
 // --- Arrival Component (for the modal) ---
@@ -1294,6 +1295,7 @@ function App() {
                     setPwaPromptDismissed(true);
                 }}
             />
+            <VersionManager />
         </div>
     );
 }

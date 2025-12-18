@@ -10,18 +10,27 @@ const ASSETS_TO_CACHE = [
   '/icon-512x512.png',
   '/favicon-16x16.png',
   '/favicon-32x32.png',
-  // Requested by user: dev module path for SplashScreen and Google Fonts assets
   '/src/components/SplashScreen.jsx',
+  // Transport Icons & SVGs
+  '/src/assets/busstationbox.png',
+  '/src/assets/stationbox.png',
+  '/src/assets/night-icon.png',
+  '/src/assets/tram-icon.png',
+  '/src/assets/metroA_v2.svg',
+  '/src/assets/metroB_v2.svg',
+  '/src/assets/metroC_v2.svg',
+  '/src/assets/train-icon.png',
+  '/src/assets/ferry-icon.png',
+  '/src/assets/trolleybus-icon.png',
   'https://fonts.googleapis.com/css2?family=Onest:wght@100..900&display=swap',
-  // Note: the v1 path can 404; we will attempt gracefully and also rely on runtime caching for actual font URLs referenced by the CSS
   'https://fonts.gstatic.com/s/onest/v1/Onest-VariableFont_wght.woff2',
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting(); // Force the waiting service worker to become the active service worker
   event.waitUntil(
     (async () => {
       const coreCache = await caches.open(CACHE_NAME);
-      // Attempt to precache assets one-by-one to avoid install failures when any single request errors
       for (const url of ASSETS_TO_CACHE) {
         try {
           await coreCache.add(url);
@@ -29,7 +38,6 @@ self.addEventListener('install', (event) => {
           console.warn('[SW] Failed to cache', url, e);
         }
       }
-      // Warm fonts cache with Google fonts CSS; actual font files will be runtime-cached on first use
       try {
         const fontsCache = await caches.open(FONTS_CACHE);
         await fontsCache.add('https://fonts.googleapis.com/css2?family=Onest:wght@100..900&display=swap');
@@ -42,16 +50,28 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name))
+    (async () => {
+      // Clear all unwanted caches (anything not current)
+      const cacheNames = await caches.keys();
+      await Promise.all(
+        cacheNames
+          .filter((name) => name !== CACHE_NAME && name !== FONTS_CACHE)
+          .map((name) => caches.delete(name))
       );
-    })
+      // Immediately take control of all open clients
+      await self.clients.claim();
+    })()
   );
 });
 
 self.addEventListener('fetch', (event) => {
   const reqUrl = new URL(event.request.url);
+
+  // CRITICAL: Always bypass cache for version.json to ensure the app knows when to update
+  if (reqUrl.pathname.includes('version.json')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
 
   // Runtime caching for Google Fonts CSS and font files (cache-first)
   if (reqUrl.origin === 'https://fonts.googleapis.com' || reqUrl.origin === 'https://fonts.gstatic.com') {
@@ -67,7 +87,6 @@ self.addEventListener('fetch', (event) => {
           }
           return resp;
         } catch (e) {
-          // Fallback to any cached CSS if available
           const fallback = await cache.match('https://fonts.googleapis.com/css2?family=Onest:wght@100..900&display=swap');
           if (fallback) return fallback;
           throw e;
@@ -77,8 +96,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Ensure SplashScreen module or built asset variants are cached when requested (dev / build)
-  if (reqUrl.pathname === '/src/components/SplashScreen.jsx' || /\/assets\/SplashScreen.*\.js$/.test(reqUrl.pathname)) {
+  // Ensure SplashScreen, Icons, or built asset variants are cached when requested
+  if (reqUrl.pathname.startsWith('/src/assets/') ||
+    reqUrl.pathname.startsWith('/assets/') ||
+    /\.(png|svg|jpg|jpeg|webp|ico)$/i.test(reqUrl.pathname)) {
     event.respondWith(
       (async () => {
         const cache = await caches.open(CACHE_NAME);
