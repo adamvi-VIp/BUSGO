@@ -62,7 +62,7 @@ const StandByMode = ({ activeTripId, realTimeData }) => {
     const delayData = activeArrival ? getDelay(activeArrival) : null;
 
     return (
-        <div className="fixed inset-0 z-[9999] bg-black text-white overflow-hidden hidden landscape:flex flex-col items-center justify-center font-onest">
+        <div className="fixed inset-0 z-[9999] bg-black text-white overflow-hidden hidden landscape:flex flex-col items-center justify-center font-onest" style={{ height: 'calc(var(--vh, 1vh) * 100)' }}>
             {/* Background pure black */}
 
             <AnimatePresence mode="wait">

@@ -31,7 +31,11 @@ const BottomMenu = ({
     const COLLAPSED_MARGIN = 160; // Distance from bottom of screen to top of collapsed menu
 
     // Helper to get collapsed Y position
-    const getCollapsedY = () => window.innerHeight - COLLAPSED_MARGIN;
+    const getCollapsedY = () => {
+        const vh = parseFloat(document.documentElement.style.getPropertyValue('--vh')) || window.innerHeight * 0.01;
+        const currentWindowHeight = vh * 100;
+        return currentWindowHeight - COLLAPSED_MARGIN;
+    };
 
     // State
     const [isDragging, setIsDragging] = useState(false);
@@ -64,7 +68,8 @@ const BottomMenu = ({
     const VELOCITY_THRESHOLD = 0.5;
 
     // Derived values for interpolation
-    const windowHeight = window.innerHeight;
+    const vh = parseFloat(document.documentElement.style.getPropertyValue('--vh')) || window.innerHeight * 0.01;
+    const windowHeight = vh * 100;
     const collapsedY = getCollapsedY();
     const totalTravel = collapsedY - EXPANDED_Y;
 
