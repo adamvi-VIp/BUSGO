@@ -99,14 +99,15 @@ function filterGeometry(geometry, stops) {
     if (geometry.type !== 'MultiLineString' && geometry.type !== 'LineString') return geometry;
 
     const segments = geometry.type === 'LineString' ? [geometry.coordinates] : geometry.coordinates;
-    const thresholdKm = 0.25; // 250m for stop-to-segment mapping
-    const connectivityThresholdKm = 0.1; // 100m to bridge minor data gaps
+    const stopMatchingThresholdKm = 0.25; // 250m for stop-to-segment mapping
+    const connectivityThresholdKm = 0.3;  // 300m to bridge data gaps (initial graph)
+    const tightConnectionThresholdKm = 0.02; // 20m for "physical touch" weight boost
 
-    // 1. Map stops to segment indices (with force-match fallback)
+    // 1. Map each stop to one or more potential segment indices
     const stopSegments = stops.map(stop => {
         const matches = [];
-        let minStopDist = Infinity;
-        let closestIdx = -1;
+        let minDist = Infinity;
+        let bestIdx = -1;
 
         segments.forEach((line, idx) => {
             let localMin = Infinity;
@@ -115,26 +116,33 @@ function filterGeometry(geometry, stops) {
                 if (d < localMin) localMin = d;
             });
 
-            if (localMin < thresholdKm) {
-                matches.push(idx);
+            if (localMin < stopMatchingThresholdKm) {
+                matches.push({ idx, dist: localMin });
             }
-            if (localMin < minStopDist) {
-                minStopDist = localMin;
-                closestIdx = idx;
+            if (localMin < minDist) {
+                minDist = localMin;
+                bestIdx = idx;
             }
         });
 
-        // Ensure every stop hits at least one segment
-        if (matches.length === 0 && closestIdx !== -1) {
-            matches.push(closestIdx);
+        // Refinement: If we have very close matches (< 50m), prefer them exclusively
+        // This prevents shortcuts (e.g. 150m away) from being used as start/end points if the 
+        // real segment is right there (0-20m away).
+        const tightMatches = matches.filter(m => m.dist < 0.05);
+        if (tightMatches.length > 0) {
+            return tightMatches.map(m => m.idx);
         }
-        return matches;
+
+        if (matches.length === 0 && bestIdx !== -1) {
+            matches.push({ idx: bestIdx, dist: minDist });
+        }
+        return matches.map(m => m.idx);
     });
 
-    // 2. Build connectivity graph
-    // We connect segments if their endpoints are near each other, 
-    // or if an endpoint is near ANY part of another segment (supports T-junctions)
-    const adj = Array.from({ length: segments.length }, () => new Set());
+    // 2. Build connectivity graph with weights
+    // weight 1: physically touching or nearly touching
+    // weight 10-100: bridging a gap (penalty to avoid "skipping" real turns if a shortcut exists)
+    const adj = Array.from({ length: segments.length }, () => []);
     for (let i = 0; i < segments.length; i++) {
         for (let j = i + 1; j < segments.length; j++) {
             const segA = segments[i];
@@ -142,66 +150,93 @@ function filterGeometry(geometry, stops) {
             const endA = [segA[0], segA[segA.length - 1]];
             const endB = [segB[0], segB[segB.length - 1]];
 
-            // Check endpoint to endpoint (fast)
-            let isConnected = endA.some(pA =>
-                endB.some(pB => getDistanceFromLatLonInKm(pA[1], pA[0], pB[1], pB[0]) < connectivityThresholdKm)
-            );
+            let minGap = Infinity;
 
-            // Check endpoint to any point (resilient for T-junctions)
-            if (!isConnected) {
-                isConnected = endA.some(pA =>
-                    segB.some(pB => getDistanceFromLatLonInKm(pA[1], pA[0], pB[1], pB[0]) < connectivityThresholdKm)
-                ) || endB.some(pB =>
-                    segA.some(pA => getDistanceFromLatLonInKm(pB[1], pB[0], pA[1], pA[0]) < connectivityThresholdKm)
-                );
+            // Check endpoint distances
+            endA.forEach(pA => {
+                endB.forEach(pB => {
+                    const d = getDistanceFromLatLonInKm(pA[1], pA[0], pB[1], pB[0]);
+                    if (d < minGap) minGap = d;
+                });
+            });
+
+            // Resilient T-junction check
+            if (minGap > tightConnectionThresholdKm) {
+                endA.forEach(pA => {
+                    segB.forEach(pB => {
+                        const d = getDistanceFromLatLonInKm(pA[1], pA[0], pB[1], pB[0]);
+                        if (d < minGap) minGap = d;
+                    });
+                });
+                endB.forEach(pB => {
+                    segA.forEach(pA => {
+                        const d = getDistanceFromLatLonInKm(pB[1], pB[0], pA[1], pA[0]);
+                        if (d < minGap) minGap = d;
+                    });
+                });
             }
 
-            if (isConnected) {
-                adj[i].add(j);
-                adj[j].add(i);
+            if (minGap < connectivityThresholdKm) {
+                // Weight logic: 1 for touching, scaling up for gaps
+                const weight = minGap < tightConnectionThresholdKm ? 1 : Math.ceil(minGap * 500);
+                adj[i].push({ to: j, weight });
+                adj[j].push({ to: i, weight });
             }
         }
     }
 
     const keepIndices = new Set();
 
-    // 3. Find segments connecting consecutive stops
+    // 3. Dijkstra-style Pathfinding
     for (let i = 0; i < stopSegments.length - 1; i++) {
         const starts = stopSegments[i];
         const ends = stopSegments[i + 1];
         if (starts.length === 0 || ends.length === 0) continue;
 
-        // BFS for shortest path (in terms of segments)
-        const queue = starts.map(s => ({ node: s, path: [s] }));
-        const visited = new Set(starts);
-        let foundPath = null;
+        // BFS simulation with weight tracking (Dijkstra)
+        const queue = starts.map(s => ({ node: s, weight: 0, path: [s] }));
+        const visited = new Map(); // node -> min weight to reach
+        starts.forEach(s => visited.set(s, 0));
+
+        let bestPath = null;
+        let minWeightFound = Infinity;
 
         while (queue.length > 0) {
-            const { node, path } = queue.shift();
-            if (ends.includes(node)) {
-                foundPath = path;
-                break;
-            }
-            if (path.length > 100) continue; // Increased safety limit
+            // Priority: smallest total weight first
+            queue.sort((a, b) => a.weight - b.weight);
+            const { node, weight, path } = queue.shift();
 
-            for (const neighbor of adj[node]) {
-                if (!visited.has(neighbor)) {
-                    visited.add(neighbor);
-                    queue.push({ node: neighbor, path: [...path, neighbor] });
+            if (weight > minWeightFound) continue;
+
+            if (ends.includes(node)) {
+                if (weight < minWeightFound) {
+                    minWeightFound = weight;
+                    bestPath = path;
+                }
+                continue;
+            }
+
+            if (path.length > 100) continue;
+
+            for (const edge of adj[node]) {
+                const newWeight = weight + edge.weight;
+                if (!visited.has(edge.to) || visited.get(edge.to) > newWeight) {
+                    visited.set(edge.to, newWeight);
+                    queue.push({ node: edge.to, weight: newWeight, path: [...path, edge.to] });
                 }
             }
         }
 
-        if (foundPath) {
-            foundPath.forEach(idx => keepIndices.add(idx));
+        if (bestPath) {
+            bestPath.forEach(idx => keepIndices.add(idx));
         } else {
-            // Pathfinding failed between two stations. 
-            // Fallback: keep segments spatially between the two stops
+            // Fallback: More generous spatial buffer if pathfinding fails
             const stopA = stops[i];
             const stopB = stops[i + 1];
             const centerLat = (stopA.lat + stopB.lat) / 2;
             const centerLon = (stopA.lon + stopB.lon) / 2;
-            const radius = getDistanceFromLatLonInKm(stopA.lat, stopA.lon, stopB.lat, stopB.lon) / 2 + 0.5;
+            const distBetweenStops = getDistanceFromLatLonInKm(stopA.lat, stopA.lon, stopB.lat, stopB.lon);
+            const radius = distBetweenStops / 2 + 0.5; // 500m buffer
 
             segments.forEach((line, idx) => {
                 const isNear = line.some(p => getDistanceFromLatLonInKm(centerLat, centerLon, p[1], p[0]) < radius);
@@ -216,7 +251,7 @@ function filterGeometry(geometry, stops) {
         stopSegments[stopSegments.length - 1].forEach(idx => keepIndices.add(idx));
     }
 
-    // If we filtered EVERYTHING out, return original
+    // Safety: If we filtered everything (shouldn't happen), return original
     if (keepIndices.size === 0) return geometry;
 
     return {
