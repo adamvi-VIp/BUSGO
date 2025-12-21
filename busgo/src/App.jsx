@@ -1254,23 +1254,26 @@ function App() {
             const targetGtfsId = stop.gtfsId ? String(stop.gtfsId) : null;
             const targetUniqueId = stop.uniqueStopPointId ? String(stop.uniqueStopPointId) : null;
 
-            const index = prev.findIndex(s => {
+            const exists = prev.some(s => {
                 const currentGtfsId = s.gtfsId ? String(s.gtfsId) : null;
                 const currentUniqueId = s.uniqueStopPointId ? String(s.uniqueStopPointId) : null;
-
                 return (targetGtfsId && currentGtfsId === targetGtfsId) ||
                     (targetUniqueId && currentUniqueId === targetUniqueId);
             });
 
-            if (index === -1) {
+            if (!exists) {
                 console.log(`[SYNC] Injecting map-selected stop ${stop.name} into bottom menu list.`);
-                return [stop, ...prev];
-            } else if (index > 0) {
-                // Move to front if it's already there but not at the top
-                const existing = prev[index];
-                const filtered = prev.filter((_, i) => i !== index);
-                return [existing, ...filtered];
+                // Recalculate distance for the new stop to ensure correct sorting
+                const loc = userLocationRef.current || userLocation;
+                const stopWithDist = { ...stop };
+                if (loc) {
+                    stopWithDist.distance = getDistanceFromLatLonInKm(loc.latitude, loc.longitude, stop.lat, stop.lon);
+                }
+
+                const merged = [...prev, stopWithDist].sort((a, b) => (a.distance || 0) - (b.distance || 0));
+                return merged.slice(0, 100);
             }
+            // If already exists, just return as is - don't move it!
             return prev;
         });
 
@@ -1350,6 +1353,11 @@ function App() {
         setSelectedStop(null);
         setTripRouteStops(null);
         setActiveTripId(null);
+
+        // Scroll bottom menu back to top
+        if (menuScrollRef.current) {
+            menuScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+        }
 
         // MapGL.jsx has an effect that flies to userLocation ONLY on first availability.
         // To force a move now, we can use a custom event or update a state that MapGL watches.
