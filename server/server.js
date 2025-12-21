@@ -186,6 +186,8 @@ function filterGeometry(geometry, stops) {
     }
 
     const keepIndices = new Set();
+    const orderedSegments = []; // Track ordered segments for smoothing [segIndices]
+
 
     // 3. Dijkstra-style Pathfinding
     for (let i = 0; i < stopSegments.length - 1; i++) {
@@ -229,6 +231,15 @@ function filterGeometry(geometry, stops) {
 
         if (bestPath) {
             bestPath.forEach(idx => keepIndices.add(idx));
+            // Add to ordered list
+            if (i === 0) {
+                orderedSegments.push(...bestPath);
+            } else {
+                // Determine if we need to add from start, handling overlap with previous segment in chain
+                const last = orderedSegments[orderedSegments.length - 1];
+                const startIdx = bestPath[0] === last ? 1 : 0;
+                orderedSegments.push(...bestPath.slice(startIdx));
+            }
         } else {
             // Fallback: More generous spatial buffer if pathfinding fails
             const stopA = stops[i];
@@ -240,19 +251,111 @@ function filterGeometry(geometry, stops) {
 
             segments.forEach((line, idx) => {
                 const isNear = line.some(p => getDistanceFromLatLonInKm(centerLat, centerLon, p[1], p[0]) < radius);
-                if (isNear) keepIndices.add(idx);
+                if (isNear) {
+                    keepIndices.add(idx);
+                    if (!orderedSegments.includes(idx)) orderedSegments.push(idx);
+                }
             });
         }
     }
 
     // Always keep segments near the first and last stops
     if (stopSegments.length > 0) {
-        stopSegments[0].forEach(idx => keepIndices.add(idx));
-        stopSegments[stopSegments.length - 1].forEach(idx => keepIndices.add(idx));
+        stopSegments[0].forEach(idx => {
+            keepIndices.add(idx);
+            if (!orderedSegments.includes(idx)) orderedSegments.unshift(idx);
+        });
+        stopSegments[stopSegments.length - 1].forEach(idx => {
+            keepIndices.add(idx);
+            if (!orderedSegments.includes(idx)) orderedSegments.push(idx);
+        });
     }
 
     // Safety: If we filtered everything (shouldn't happen), return original
     if (keepIndices.size === 0) return geometry;
+
+    // --- SMOOTHING ---
+    // Merge segments into a single LineString if possible
+    try {
+        if (orderedSegments.length > 0) {
+            const mergedCoords = [];
+
+            const distEx = (p1, p2) => getDistanceFromLatLonInKm(p1[1], p1[0], p2[1], p2[0]);
+
+            // Initial segment orientation
+            let seg0 = segments[orderedSegments[0]];
+            // Basic orientation check against next segment if available
+            if (orderedSegments.length > 1) {
+                const nextSeg = segments[orderedSegments[1]];
+                const dStartToNext = distEx(seg0[0], nextSeg[0]) + distEx(seg0[0], nextSeg[nextSeg.length - 1]);
+                const dEndToNext = distEx(seg0[seg0.length - 1], nextSeg[0]) + distEx(seg0[seg0.length - 1], nextSeg[nextSeg.length - 1]);
+
+                // If end is closer to next segment than start, it's correctly oriented (Start->End -> Next)
+                // If start is closer, we might need to flip (End->Start -> Next)
+                if (dStartToNext < dEndToNext) {
+                    seg0 = [...seg0].reverse();
+                }
+            } else if (stops && stops.length > 0) {
+                // Single segment, orient by stops
+                const dStart = distEx(stops[0], seg0[0]);
+                const dEnd = distEx(stops[0], seg0[seg0.length - 1]);
+                if (dEnd < dStart) {
+                    seg0 = [...seg0].reverse();
+                }
+            }
+
+            mergedCoords.push(...seg0);
+
+            for (let k = 1; k < orderedSegments.length; k++) {
+                const nextSegRaw = segments[orderedSegments[k]];
+                const lastPoint = mergedCoords[mergedCoords.length - 1];
+
+                const dStart = distEx(lastPoint, nextSegRaw[0]);
+                const dEnd = distEx(lastPoint, nextSegRaw[nextSegRaw.length - 1]);
+
+                if (dStart < dEnd) {
+                    // Next segment is regular
+                    const toAdd = dStart < 0.005 ? nextSegRaw.slice(1) : nextSegRaw;
+                    mergedCoords.push(...toAdd);
+                } else {
+                    // Next segment needs flipping
+                    const reversed = [...nextSegRaw].reverse();
+                    const toAdd = dEnd < 0.005 ? reversed.slice(1) : reversed;
+                    mergedCoords.push(...toAdd);
+                }
+            }
+
+            // Chaikin Smoothing Function
+            const smooth = (coords) => {
+                if (coords.length < 3) return coords;
+                const newCoords = [];
+                newCoords.push(coords[0]); // Keep start
+                for (let i = 0; i < coords.length - 1; i++) {
+                    const p0 = coords[i];
+                    const p1 = coords[i + 1];
+
+                    // Q: 0.75*p0 + 0.25*p1
+                    // R: 0.25*p0 + 0.75*p1
+                    const Q = [0.75 * p0[0] + 0.25 * p1[0], 0.75 * p0[1] + 0.25 * p1[1]];
+                    const R = [0.25 * p0[0] + 0.75 * p1[0], 0.25 * p0[1] + 0.75 * p1[1]];
+                    newCoords.push(Q, R);
+                }
+                newCoords.push(coords[coords.length - 1]); // Keep end
+                return newCoords;
+            };
+
+            // 2 Iterations
+            let smoothed = smooth(mergedCoords);
+            smoothed = smooth(smoothed);
+
+            return {
+                type: 'LineString', // Return single smooth line
+                coordinates: smoothed
+            };
+        }
+    } catch (e) {
+        console.error('[Smoothing] Failed, returning regular multilinestring', e);
+    }
 
     return {
         type: 'MultiLineString',
@@ -412,8 +515,15 @@ async function refreshStationsCache() {
             const THRESHOLD_KM = 0.05; // 50 meters (increased from 0.01m to deduplicate physical locations)
 
             for (const stop of rawStops) {
-                // Find potential existing group within threshold AND with same/similar name
+                // Find potential existing group:
+                // 1. SHARED GTFS ID (Strongest Match)
+                // 2. Proximity + Name Match (Secondary)
                 let group = groupedStops.find(g => {
+                    // Check for shared GTFS IDs
+                    const sharedId = stop.gtfsIds.some(id => g.gtfsIds.includes(id));
+                    if (sharedId) return true;
+
+                    // Fallback to spatial check
                     const dist = getDistanceFromLatLonInKm(stop.lat, stop.lon, g.lat, g.lon);
                     if (dist >= THRESHOLD_KM) return false;
 
@@ -438,14 +548,10 @@ async function refreshStationsCache() {
                     });
                     group.lines = Array.from(lineMap.values());
 
-                    // Merge is_night (if any part is not night, the whole isn't necessarily night, 
-                    // but usually these are same physical location so they should match. 
-                    // We'll use AND logic: if both are night, stay night.)
+                    // Merge is_night
                     group.is_night = group.is_night && stop.is_night;
 
-                    // If one has platform and other doesn't, keep the platform. 
-                    // If both have different platforms, we could join them, but usually 
-                    // these are just duplicate entries for the same physical pole.
+                    // Keep platform if missing
                     if (!group.platform && stop.platform) group.platform = stop.platform;
                 } else {
                     // Start new group
