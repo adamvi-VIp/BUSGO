@@ -1,5 +1,5 @@
-const CACHE_NAME = 'busgo-pwa-v2';
-const FONTS_CACHE = 'busgo-fonts-v2';
+const CACHE_NAME = 'busgo-pwa-v3';
+const FONTS_CACHE = 'busgo-fonts-v3';
 const IS_DEV = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1';
 
 // Precache core assets + requested resources
@@ -16,12 +16,23 @@ const ASSETS_TO_CACHE = [
   '/src/assets/stationbox.png',
   '/src/assets/night-icon.png',
   '/src/assets/tram-icon.png',
-  '/src/assets/metroA_v2.svg',
-  '/src/assets/metroB_v2.svg',
-  '/src/assets/metroC_v2.svg',
+  // Metro PNGs (Converted from SVGs)
+  '/src/assets/metroA-icon.png',
+  '/src/assets/metroB-icon.png',
+  '/src/assets/metroC-icon.png',
   '/src/assets/train-icon.png',
   '/src/assets/ferry-icon.png',
   '/src/assets/trolleybus-icon.png',
+  // Dimmed Variants
+  '/src/assets/bus-icon-dimmed.png',
+  '/src/assets/tram-icon-dimmed.png',
+  '/src/assets/metroA-icon-dimmed.png',
+  '/src/assets/metroB-icon-dimmed.png',
+  '/src/assets/metroC-icon-dimmed.png',
+  '/src/assets/train-icon-dimmed.png',
+  '/src/assets/ferry-icon-dimmed.png',
+  '/src/assets/trolleybus-icon-dimmed.png',
+  '/src/assets/night-icon-dimmed.png',
   'https://fonts.googleapis.com/css2?family=Onest:wght@100..900&display=swap',
   'https://fonts.gstatic.com/s/onest/v1/Onest-VariableFont_wght.woff2',
 ];

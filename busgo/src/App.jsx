@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { socket } from './components/ConnectionStatus';
 import ErrorsSection from './components/ErrorsSection';
 import BottomMenu from './components/BottomMenu';
@@ -11,7 +12,7 @@ import VersionManager from './components/VersionManager';
 
 
 // --- Arrival Component (for the modal) ---
-const Arrival = ({ arrival }) => {
+const Arrival = React.forwardRef(({ arrival, onDepartureClick, isActive }, ref) => {
     const { route, trip, departure_timestamp } = arrival;
     const [remainingTime, setRemainingTime] = useState(null);
 
@@ -63,7 +64,7 @@ const Arrival = ({ arrival }) => {
 
     const formatRemainingTime = (ms) => {
         if (ms === null) return 'N/A';
-        if (ms <= 0) return '';
+        if (ms <= 0) return '00:00';
         const totalSeconds = Math.floor(ms / 1000);
         const hours = Math.floor(totalSeconds / 3600);
         const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -94,7 +95,7 @@ const Arrival = ({ arrival }) => {
     };
 
     const delayString = formatDelay(arrival?.delay?.seconds);
-    const isDeparting = remainingTime !== null && remainingTime <= 60000 && remainingTime > 0;
+    const isDeparting = remainingTime !== null && remainingTime <= 60000 && remainingTime >= -5000;
 
     const getDelayColor = (delayInSeconds) => {
         if (delayInSeconds === null || delayInSeconds === undefined) return '';
@@ -110,13 +111,32 @@ const Arrival = ({ arrival }) => {
     const formattedTime = formatRemainingTime(remainingTime);
 
     return (
-        <div className={`flex justify-between items-center p-3 mb-2 rounded-lg border-b border-gray-800 transition-all duration-300 overflow-x-hidden -ml-1`}>
-            <div className="flex items-center gap-4 mb-1 min-w-0">
-                <span className="px-[10px] py-1 rounded-md font-bold text-center text-sm shadow-md flex-shrink-0 bg-yellow-500 text-black">
-                    {route.short_name}
-                </span>
-                <div className="flex-1 min-w-0">
-                    <span className="font-medium text-white break-words block whitespace-normal">
+        <motion.div
+            ref={ref}
+            layout
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 30, mass: 1 }}
+            onClick={() => onDepartureClick && onDepartureClick(arrival)}
+            className={`flex justify-between items-center p-3 mb-2 rounded-lg border-b border-gray-800 transition-all duration-300 overflow-x-hidden -ml-1 cursor-pointer hover:bg-white/5 active:bg-white/10 ${isActive ? 'bg-cyan-500/20 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)] ring-1 ring-cyan-500/30' : ''}`}
+        >
+            <div className="flex items-center gap-4 mb-1 min-w-0 flex-grow">
+                <div className="flex flex-col items-center gap-1">
+                    <span className="px-[10px] py-1 rounded-md font-bold text-center text-sm shadow-md flex-shrink-0 bg-yellow-500 text-black">
+                        {route.short_name}
+                    </span>
+                    {isActive && (
+                        <span
+                            className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider animate-pulse"
+                        >
+                            Active
+                        </span>
+                    )}
+                </div>
+
+                <div className="flex-1 min-w-0 flex flex-col justify-center">
+                    <span className="font-medium text-white break-words block whitespace-normal truncate pr-2">
                         {trip.headsign}
                     </span>
                     {delayString && (
@@ -131,29 +151,22 @@ const Arrival = ({ arrival }) => {
                     )}
                 </div>
             </div>
-            <div className="flex items-center gap-3 flex-shrink-0">
-                <span className={`text-lg font-bold text-right ${isDeparting ? 'text-orange-400 animate-pulse' : 'text-white'} mr-1`}
+
+            <div className="flex items-center gap-3 flex-shrink-0 min-w-[70px] justify-end">
+                <span
+                    className={`text-lg font-bold text-right ${isDeparting ? 'text-orange-400 animate-pulse' : 'text-white'}`}
                 >
                     {formattedTime !== 'N/A' && formattedTime !== null ? formattedTime : ''}
                 </span>
             </div>
-        </div>
+        </motion.div>
     );
-};
+});
 
 // --- Stop Modal Component ---
-const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) => {
-    const { name, platform, zone, wheelchairAccess } = stop;
+const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDepartureClick, activeTripId, setActiveTripId }) => {
+    const { name, platform, zone } = stop;
 
-    const getWheelchairAccessText = (access) => {
-        if (access === 1) return "♿ Accessible";
-        if (access === 2) return "⛔ Not Accessible";
-        switch (String(access).toLowerCase()) {
-            case 'accessible': case 'yes': return "♿ Accessible";
-            case 'not_accessible': case 'no': return "⛔ Not Accessible";
-            default: return "♿ No Info";
-        }
-    };
 
     const hasDepartures = realTimeData && realTimeData.departures && realTimeData.departures.length > 0;
 
@@ -163,6 +176,88 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) =>
         const interval = setInterval(() => setNow(Date.now()), 1000);
         return () => clearInterval(interval);
     }, []);
+
+    const processedDepartures = React.useMemo(() => {
+        if (!realTimeData || !realTimeData.departures) return [];
+
+        const filtered = realTimeData.departures
+            .filter(arrival => {
+                const departureTimestamp = arrival.departure_timestamp?.predicted || arrival.departure_timestamp?.scheduled;
+                let arrivalTime;
+                if (typeof departureTimestamp === 'string') {
+                    const parsed = new Date(departureTimestamp);
+                    if (!isNaN(parsed.getTime())) {
+                        arrivalTime = parsed.getTime();
+                    } else {
+                        const unixTimestamp = parseInt(departureTimestamp);
+                        if (!isNaN(unixTimestamp)) {
+                            arrivalTime = unixTimestamp * 1000;
+                        } else {
+                            return false;
+                        }
+                    }
+                } else if (typeof departureTimestamp === 'number') {
+                    arrivalTime = departureTimestamp < 1000000000000 ? departureTimestamp * 1000 : departureTimestamp;
+                } else {
+                    return false;
+                }
+
+                // --- STRICT FILTERING BY STATION LINE/DIRECTION ---
+                const lineName = arrival.route?.short_name;
+                const headsign = (arrival.trip?.headsign || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+                const allowedLine = stop.lines?.find(l => String(l.name) === String(lineName));
+                if (!allowedLine) return false;
+
+                const d1 = (allowedLine.direction || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                const d2 = (allowedLine.direction2 || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+                const matchesDirection = headsign.includes(d1) || (d2 && headsign.includes(d2)) || d1.includes(headsign);
+                if (!matchesDirection) return false;
+                // ----------------------------------------------------
+
+                const isThisActive = activeTripId === arrival.trip.id;
+                // Threshold: -5s for instant switching (120s if active)
+                const threshold = isThisActive ? -120000 : -5000;
+                return arrivalTime - now > threshold;
+            });
+
+        // Group by line to show only the closest one per line
+        const grouped = filtered.reduce((acc, arrival) => {
+            const line = arrival.route?.short_name || 'Unknown';
+            const isThisActive = activeTripId === arrival.trip.id;
+
+            if (!acc[line]) {
+                acc[line] = arrival;
+            } else {
+                if (isThisActive) {
+                    acc[line] = arrival;
+                } else if (activeTripId !== acc[line].trip.id) {
+                    const aTime = new Date(acc[line].departure_timestamp?.predicted || acc[line].departure_timestamp?.scheduled).getTime();
+                    const bTime = new Date(arrival.departure_timestamp?.predicted || arrival.departure_timestamp?.scheduled).getTime();
+                    if (bTime < aTime) acc[line] = arrival;
+                }
+            }
+            return acc;
+        }, {});
+
+        return Object.values(grouped)
+            .sort((a, b) => {
+                const aTime = new Date(a.departure_timestamp?.predicted || a.departure_timestamp?.scheduled).getTime();
+                const bTime = new Date(b.departure_timestamp?.predicted || b.departure_timestamp?.scheduled).getTime();
+                return aTime - bTime;
+            });
+    }, [realTimeData, activeTripId, now, stop.lines]);
+
+    // Effect to clear active trip focus if it departs
+    React.useEffect(() => {
+        if (activeTripId && realTimeData && realTimeData.departures) {
+            const isActivePresent = processedDepartures.some(d => d.trip.id === activeTripId);
+            if (!isActivePresent) {
+                setActiveTripId(null);
+            }
+        }
+    }, [processedDepartures, activeTripId, setActiveTripId, realTimeData]);
 
     return (
         <>
@@ -187,7 +282,6 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) =>
                             <div className="flex items-center gap-3 text-xs text-gray-400 mt-1">
                                 <span>Platform {platform || 'N/A'}</span>
                                 <span>Zone {zone}</span>
-                                <span>{getWheelchairAccessText(wheelchairAccess)}</span>
                             </div>
                         </div>
                         <button
@@ -203,56 +297,19 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error }) =>
 
                     {/* Only this div scrolls */}
                     <div className="overflow-y-auto p-4 flex-1" style={{ maxHeight: 'calc(100vh - 340px)' }}>
-                        {/* Removed blocking LoadingScreen */}
                         {error && <div className="text-center text-red-400 p-4 bg-red-500/10 rounded-xl text-sm">{error.error}</div>}
                         {realTimeData && (
-                            hasDepartures ? (
-                                // Group by line and only show the next future departure for each line
-                                Object.values(
-                                    realTimeData.departures
-                                        .filter(arrival => {
-                                            // Calculate remaining time for each arrival
-                                            const departureTimestamp = arrival.departure_timestamp?.predicted || arrival.departure_timestamp?.scheduled;
-                                            let arrivalTime;
-                                            if (typeof departureTimestamp === 'string') {
-                                                const parsed = new Date(departureTimestamp);
-                                                if (!isNaN(parsed.getTime())) {
-                                                    arrivalTime = parsed.getTime();
-                                                } else {
-                                                    const unixTimestamp = parseInt(departureTimestamp);
-                                                    if (!isNaN(unixTimestamp)) {
-                                                        arrivalTime = unixTimestamp * 1000;
-                                                    } else {
-                                                        return false;
-                                                    }
-                                                }
-                                            } else if (typeof departureTimestamp === 'number') {
-                                                if (departureTimestamp < 1000000000000) {
-                                                    arrivalTime = departureTimestamp * 1000;
-                                                } else {
-                                                    arrivalTime = departureTimestamp;
-                                                }
-                                            } else {
-                                                return false;
-                                            }
-                                            // Relaxed filter: show buses up to 1 minute "ago" to prevent instant disappearing
-                                            return arrivalTime - now > -60000;
-                                        })
-                                        .reduce((acc, arrival) => {
-                                            const line = arrival.route?.short_name || 'Unknown';
-                                            if (!acc[line]) {
-                                                acc[line] = arrival;
-                                            } else {
-                                                // Only keep the soonest
-                                                const aTime = new Date(acc[line].departure_timestamp?.predicted || acc[line].departure_timestamp?.scheduled).getTime();
-                                                const bTime = new Date(arrival.departure_timestamp?.predicted || arrival.departure_timestamp?.scheduled).getTime();
-                                                if (bTime < aTime) acc[line] = arrival;
-                                            }
-                                            return acc;
-                                        }, {}))
-                                    .map((arrival, index) => (
-                                        <Arrival key={arrival.trip.id || index} arrival={arrival} />
-                                    ))
+                            processedDepartures.length > 0 ? (
+                                <AnimatePresence mode="popLayout" initial={false}>
+                                    {processedDepartures.map((arrival) => (
+                                        <Arrival
+                                            key={arrival.trip.id}
+                                            arrival={arrival}
+                                            onDepartureClick={onDepartureClick}
+                                            isActive={activeTripId === (arrival.trip.id)}
+                                        />
+                                    ))}
+                                </AnimatePresence>
                             ) : (
                                 <p className="text-center text-gray-500 p-6 text-sm">No departures scheduled.</p>
                             )
@@ -302,6 +359,8 @@ function App() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isLayoutReady, setIsLayoutReady] = useState(false); // New state for layout readiness
     const [locationWaitRemainingSec, setLocationWaitRemainingSec] = useState(null);
+    const [tripRouteStops, setTripRouteStops] = useState(null); // Array of stop IDs or null
+    const [activeTripId, setActiveTripId] = useState(null); // ID of the currently selected bus trip
 
     // PWA Install Prompt state
     const [showPWAInstall, setShowPWAInstall] = useState(false);
@@ -459,6 +518,16 @@ function App() {
             }
         };
 
+        const handleTripPathData = (data) => {
+            if (data && Array.isArray(data.stops)) {
+                console.log('Received trip path stops:', data.stops.length);
+                // Extract stop IDs
+                // Ensure we handle stop_id string format correctly
+                const stopIds = data.stops.map(s => s.stop_id);
+                setTripRouteStops(stopIds);
+            }
+        };
+
         const handleDepartureData = (data) => {
             if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
 
@@ -490,12 +559,14 @@ function App() {
         socket.on('stopsError', handleStopsError);
         socket.on('departureData', handleDepartureData);
         socket.on('departureError', handleDepartureError);
+        socket.on('tripPathData', handleTripPathData);
 
         return () => {
             socket.off('stopsData', handleStopsData);
             socket.off('stopsError', handleStopsError);
             socket.off('departureData', handleDepartureData);
             socket.off('departureError', handleDepartureError);
+            socket.off('tripPathData', handleTripPathData);
         };
     }, []);
 
@@ -990,6 +1061,8 @@ function App() {
             socket.emit('stopDepartureMonitoring', selectedStop.gtfsId);
         }
         setSelectedStop(stop);
+        setTripRouteStops(null); // Clear route on new selection
+        setActiveTripId(null);
         setIsPanelExpanded(false);
         setIsLoadingRealTime(true);
         setRealTimeData(null); // Clear only on explicit new selection
@@ -1028,9 +1101,36 @@ function App() {
         sessionStorage.removeItem('selectedStop');
     };
 
-    const removeError = (index) => {
-        setErrors(errors.filter((_, i) => i !== index));
-    };
+    const handleLocationClick = useCallback(() => {
+        if (!userLocation) return;
+
+        // Use existing programmaticMoveRef pattern
+        if (programmaticMoveRef) programmaticMoveRef.current = true;
+
+        // Dispatch event for MapGL to handle move or use mapRef if available
+        // MapGL already listens for userLocation changes for initial move, 
+        // but here we want to force move and close modal.
+
+        // Close modal
+        setSelectedStop(null);
+        setTripRouteStops(null);
+        setActiveTripId(null);
+
+        // MapGL.jsx has an effect that flies to userLocation ONLY on first availability.
+        // To force a move now, we can use a custom event or update a state that MapGL watches.
+        // Actually, MapGL watches selectedStop for moves.
+        // Let's use the CustomEvent pattern used in search results if needed, 
+        // or just let the user see their dot. 
+        // Wait, MapGL doesn't have a 'move to user' prop besides the initial one.
+        // I'll add a 'moveToUser' trigger or just fire a map-move event.
+        window.dispatchEvent(new CustomEvent('map-move', {
+            detail: { center: [userLocation.longitude, userLocation.latitude], zoom: 16 }
+        }));
+    }, [userLocation, programmaticMoveRef]);
+
+    const removeError = useCallback((id) => {
+        setErrors(errors.filter((_, i) => i !== id));
+    }, [errors]);
 
     const forceRefresh = () => {
         refreshInProgressRef.current = true;
@@ -1212,6 +1312,7 @@ function App() {
                 isRefreshing={isRefreshing}
                 programmaticMoveRef={programmaticMoveRef}
                 setMapReady={setMapReady}
+                highlightedStopIds={tripRouteStops}
             />
 
             <header
@@ -1257,33 +1358,62 @@ function App() {
                 </div>
             </header>
 
-            <BottomMenu
-                bottomMenuStops={bottomMenuStops}
-                isLoading={isLoading}
-                isWaitingForLocation={((locationPermissionStatus === 'pending' || locationPermissionStatus === 'prompt') && locationDecisionPending && !userLocation)}
-                locationWaitRemainingSec={locationWaitRemainingSec}
-                searchTerm={searchTerm}
-                isPanelExpanded={isPanelExpanded}
-                setIsPanelExpanded={setIsPanelExpanded}
-                currentPage={currentPage}
-                setCurrentPage={setCurrentPage}
-                selectedStop={selectedStop}
-                handleStopSelect={handleStopSelect}
-                handleRefreshClick={handleRefreshClick}
-                isRefreshing={isRefreshing}
-                userLocation={userLocation}
-                isStandalone={isStandalone}
-                selectedStopRef={selectedStopRef}
-                menuScrollRef={menuScrollRef}
-            />
+            {isPanelExpanded && (
+                <div
+                    className="fixed inset-0 bg-black/50 z-40 transition-opacity duration-300"
+                    onClick={() => setIsPanelExpanded(false)}
+                />
+            )}
+            {/* Prevent clicks on menu from propagating to map (or closing the panel if we decide that) */}
+            <div onClick={(e) => e.stopPropagation()}>
+                <BottomMenu
+                    bottomMenuStops={bottomMenuStops}
+                    selectedStop={selectedStop}
+                    onStopSelect={(stop) => {
+                        setSelectedStop(stop);
+                        setTripRouteStops(null); // Clear route on new selection
+                        setActiveTripId(null);
+                    }}
+                    setIsPanelExpanded={setIsPanelExpanded}
+                    isPanelExpanded={isPanelExpanded}
+                    isLoading={isLoading}
+                    searchTerm={searchTerm}
+                    setSearchTerm={setSearchTerm}
+                    currentPage={currentPage}
+                    setCurrentPage={setCurrentPage}
+                    handleRefreshClick={handleRefreshClick}
+                    isRefreshing={isRefreshing}
+                    userLocation={userLocation}
+                    isStandalone={isStandalone}
+                    selectedStopRef={selectedStopRef}
+                    menuScrollRef={menuScrollRef}
+                    isWaitingForLocation={((locationPermissionStatus === 'pending' || locationPermissionStatus === 'prompt') && locationDecisionPending && !userLocation)}
+                    locationWaitRemainingSec={locationWaitRemainingSec}
+                    onLocationClick={handleLocationClick}
+                />
+            </div>
 
             {selectedStop && (
                 <StopModal
                     stop={selectedStop}
-                    onClose={handleCloseModal}
+                    onClose={() => {
+                        setSelectedStop(null);
+                        setTripRouteStops(null);
+                        setActiveTripId(null);
+                    }}
                     realTimeData={realTimeData}
                     isLoadingRealTime={isLoadingRealTime}
                     error={errors.find(e => e.stopId === selectedStop.gtfsId)}
+                    onDepartureClick={(arrival) => {
+                        if (arrival && arrival.trip) {
+                            console.log('Departure clicked, requesting path for:', arrival.trip.id);
+                            setActiveTripId(arrival.trip.id);
+                            // Send full trip object to helper server resolve IDs
+                            socket.emit('getTripPath', arrival.trip);
+                        }
+                    }}
+                    activeTripId={activeTripId}
+                    setActiveTripId={setActiveTripId}
                 />
             )}
             <ErrorsSection errors={errors.filter(e => !e.stopId)} removeError={removeError} />

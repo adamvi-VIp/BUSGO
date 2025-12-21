@@ -5,13 +5,25 @@ import busStationBoxIcon from '../assets/busstationbox.png';
 import stationBoxIcon from '../assets/stationbox.png';
 import nightIcon from '../assets/night-icon.png';
 // Import generated colored icons & SVGs
+// Import generated colored icons & SVGs replacement
 import tramIcon from '../assets/tram-icon.png';
-import metroAIcon from '../assets/metroA_v2.svg';
-import metroBIcon from '../assets/metroB_v2.svg';
-import metroCIcon from '../assets/metroC_v2.svg';
+import metroAIcon from '../assets/metroA-icon.png';
+import metroBIcon from '../assets/metroB-icon.png';
+import metroCIcon from '../assets/metroC-icon.png';
 import trainIcon from '../assets/train-icon.png';
 import ferryIcon from '../assets/ferry-icon.png';
 import trolleybusIcon from '../assets/trolleybus-icon.png';
+
+// Import Dimmed Icons
+import busIconDimmed from '../assets/bus-icon-dimmed.png';
+import tramIconDimmed from '../assets/tram-icon-dimmed.png';
+import metroAIconDimmed from '../assets/metroA-icon-dimmed.png';
+import metroBIconDimmed from '../assets/metroB-icon-dimmed.png';
+import metroCIconDimmed from '../assets/metroC-icon-dimmed.png';
+import trainIconDimmed from '../assets/train-icon-dimmed.png';
+import ferryIconDimmed from '../assets/ferry-icon-dimmed.png';
+import trolleybusIconDimmed from '../assets/trolleybus-icon-dimmed.png';
+import nightIconDimmed from '../assets/night-icon-dimmed.png';
 
 const DEFAULT_CENTER = [14.4378, 50.0755]; // Prague
 const DEFAULT_ZOOM = 16;
@@ -38,16 +50,20 @@ function userToGeoJSON(loc) {
   };
 }
 
-function selectedToGeoJSON(stop) {
+function selectedToGeoJSON(stop, isTripActive = false) {
   return {
     type: 'FeatureCollection',
     features: stop && stop.lat !== undefined && stop.lon !== undefined && !isNaN(stop.lat) && !isNaN(stop.lon)
-      ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: [stop.lon, stop.lat] }, properties: { ...stop, id: stop.uniqueStopPointId } }]
+      ? [{
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [stop.lon, stop.lat] },
+        properties: { ...stop, id: stop.uniqueStopPointId, is_trip_active: isTripActive }
+      }]
       : []
   };
 }
 
-const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefreshing, programmaticMoveRef, setMapReady }) => {
+const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefreshing, programmaticMoveRef, setMapReady, highlightedStopIds }) => {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const lastCenterRef = useRef(null);
@@ -149,62 +165,54 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
           loadImage('metroC-icon', metroCIcon),
           loadImage('train-icon', trainIcon),
           loadImage('ferry-icon', ferryIcon),
-          loadImage('trolleybus-icon', trolleybusIcon)
+          loadImage('trolleybus-icon', trolleybusIcon),
+
+          // Load Dimmed Icons
+          loadImage('bus-icon-dimmed', busIconDimmed),
+          loadImage('tram-icon-dimmed', tramIconDimmed),
+          loadImage('metroA-icon-dimmed', metroAIconDimmed),
+          loadImage('metroB-icon-dimmed', metroBIconDimmed),
+          loadImage('metroC-icon-dimmed', metroCIconDimmed),
+          loadImage('train-icon-dimmed', trainIconDimmed),
+          loadImage('ferry-icon-dimmed', ferryIconDimmed),
+          loadImage('trolleybus-icon-dimmed', trolleybusIconDimmed),
+          loadImage('night-icon-dimmed', nightIconDimmed)
         ]);
 
-        // Add rounded-square overlay image for selected stop
-        if (!map.hasImage('selected-stop-overlay')) {
-          const overlaySize = 48;
-          const cornerRadius = 8; // rounded-lg
-          const canvas = document.createElement('canvas');
-          canvas.width = overlaySize;
-          canvas.height = overlaySize;
-          const ctx = canvas.getContext('2d');
-          ctx.clearRect(0, 0, overlaySize, overlaySize);
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-          const r = cornerRadius;
-          ctx.beginPath();
-          ctx.moveTo(r, 0);
-          ctx.lineTo(overlaySize - r, 0);
-          ctx.quadraticCurveTo(overlaySize, 0, overlaySize, r);
-          ctx.lineTo(overlaySize, overlaySize - r);
-          ctx.quadraticCurveTo(overlaySize, overlaySize, overlaySize - r, overlaySize);
-          ctx.lineTo(r, overlaySize);
-          ctx.quadraticCurveTo(0, overlaySize, 0, overlaySize - r);
-          ctx.lineTo(0, r);
-          ctx.quadraticCurveTo(0, 0, r, 0);
-          ctx.closePath();
-          ctx.fill();
-          const imageData = ctx.getImageData(0, 0, overlaySize, overlaySize);
-          try { map.addImage('selected-stop-overlay', imageData); } catch { }
-        }
+        // Canvas overlay generation removed (replaced by dimmed icons)
 
         // --- LAYER ORDERING STRATEGY ---
-        // 1. Selected Stop Icons (Bottom) - to be covered by darkener
-        // 2. Selected Stop Darkener (Middle) - covers selected stop
-        // 3. All Other Stops (Top) - drawn 'fresh' on top of any darkeners beneath them.
+        // 1. Selected Stop Icons (Bottom) - to be covered by darkener (REMOVED: Now uses dimmed icon directly)
+        // New Strategy:
+        // 1. Selected Stop (Dimmed Icon)
+        // 2. All Other Stops (Top)
 
         map.addSource('selected-stop', { type: 'geojson', data: selectedToGeoJSON(selectedStop) });
 
         // 1. Selected Stop Icon (Universal - rendered UNDER the darkener)
+        // 1. Selected Stop (Dimmed version)
         map.addLayer({
           id: 'selected-stop-bus',
           type: 'symbol',
           source: 'selected-stop',
           layout: {
             'icon-image': [
-              'case',
-              ['to-boolean', ['get', 'is_night']], 'night-icon',
-              ['match', ['get', 'mainTrafficType'],
-                'tram', 'tram-icon',
-                'metroA', 'metroA-icon',
-                'metroB', 'metroB-icon',
-                'metroC', 'metroC-icon',
-                'train', 'train-icon',
-                'ferry', 'ferry-icon',
-                'trolleybus', 'trolleybus-icon',
-                'bus-icon' // Default
-              ]
+              'concat',
+              [
+                'case',
+                ['to-boolean', ['get', 'is_night']], 'night-icon',
+                ['match', ['get', 'mainTrafficType'],
+                  'tram', 'tram-icon',
+                  'metroA', 'metroA-icon',
+                  'metroB', 'metroB-icon',
+                  'metroC', 'metroC-icon',
+                  'train', 'train-icon',
+                  'ferry', 'ferry-icon',
+                  'trolleybus', 'trolleybus-icon',
+                  'bus-icon' // Default
+                ]
+              ],
+              ['case', ['get', 'is_trip_active'], '', '-dimmed']
             ],
             'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 16, 1],
             'icon-allow-overlap': true,
@@ -216,23 +224,7 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
           }
         });
 
-        // 2. Darkener (Middle)
-        map.addLayer({
-          id: 'selected-stop-darkener',
-          type: 'symbol',
-          source: 'selected-stop',
-          layout: {
-            'icon-image': 'selected-stop-overlay',
-            'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 16, 1],
-            'icon-anchor': 'center',
-            'icon-allow-overlap': true,
-            'icon-ignore-placement': true
-          },
-          paint: {
-            'icon-opacity': 0, // Start invisible, fade in
-            'icon-opacity-transition': { duration: 300 }
-          }
-        });
+        // Darkener Layer REMOVED
 
         // 3. Main Stops (All stops as Bus Icons)
         map.addSource('stops', { type: 'geojson', data: stopsToGeoJSON(stops) });
@@ -288,10 +280,41 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
           const id = selectedStop.uniqueStopPointId;
           try {
             // Cross-Fade: Main Out, Selected In
-            map.setPaintProperty('bus-stops', 'icon-opacity', ['case', ['==', ['get', 'uniqueStopPointId'], id], 0, 1]);
+            // Opacity Logic
+            // If highlightedStopIds is active:
+            //   selectedStop -> 0 (covered by dimmed icon) - handled by selected check
+            //   in list -> 1
+            //   not in list -> 0.2
 
-            map.setPaintProperty('selected-stop-bus', 'icon-opacity', 1);
-            map.setPaintProperty('selected-stop-darkener', 'icon-opacity', 1);
+            // If no highlightedStopIds:
+            //   selectedStop -> 0
+            //   others -> 1
+
+            const uniqueId = selectedStop.uniqueStopPointId;
+
+            let opacityExpression;
+            if (highlightedStopIds && highlightedStopIds.length > 0) {
+              opacityExpression = [
+                'case',
+                ['==', ['get', 'uniqueStopPointId'], uniqueId], 0, // Hide selected (shown as dimmed icon)
+                ['in', ['get', 'gtfsId'], ['literal', highlightedStopIds]], 1,
+                0.2 // Dim extraneous stops
+              ];
+            } else {
+              opacityExpression = [
+                'case',
+                ['==', ['get', 'uniqueStopPointId'], uniqueId], 0,
+                1
+              ];
+            }
+            if (map.getLayer('bus-stops')) {
+              map.setPaintProperty('bus-stops', 'icon-opacity', opacityExpression);
+            }
+
+            if (map.getLayer('selected-stop-bus')) {
+              map.setPaintProperty('selected-stop-bus', 'icon-opacity', 1);
+            }
+            // map.setPaintProperty('selected-stop-darkener', 'icon-opacity', 1); // Removed
           } catch { }
         }
 
@@ -353,30 +376,57 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
     const map = mapRef.current;
     if (!map) return;
     const src = map.getSource && map.getSource('selected-stop');
-    if (src && src.setData) src.setData(selectedToGeoJSON(selectedStop));
+    const isTripActive = !!(highlightedStopIds && highlightedStopIds.length > 0);
+    if (src && src.setData) src.setData(selectedToGeoJSON(selectedStop, isTripActive));
 
     // Update OPACITY on main layers to hide selected stop smoothly (instead of filtering/blinking)
     const id = selectedStop?.uniqueStopPointId;
     if (id) {
       try {
         // Cross-Fade: Main Out, Selected In
-        map.setPaintProperty('bus-stops', 'icon-opacity', ['case', ['==', ['get', 'uniqueStopPointId'], id], 0, 1]);
+        const uniqueId = selectedStop.uniqueStopPointId;
 
-        map.setPaintProperty('selected-stop-bus', 'icon-opacity', 1);
-        map.setPaintProperty('selected-stop-darkener', 'icon-opacity', 1);
-      } catch { }
+        const opacityExpression = highlightedStopIds && highlightedStopIds.length > 0
+          ? ['case',
+            ['==', ['get', 'uniqueStopPointId'], uniqueId], 0,
+            ['in', ['get', 'gtfsId'], ['literal', highlightedStopIds]], 1,
+            0.2
+          ]
+          : ['case',
+            ['==', ['get', 'uniqueStopPointId'], uniqueId], 0,
+            1
+          ];
+
+        if (map.getLayer('bus-stops')) {
+          map.setPaintProperty('bus-stops', 'icon-opacity', opacityExpression);
+
+          // Maintain consistent sizing as requested
+          const sizeExpression = ['interpolate', ['linear'], ['zoom'], 12, 0.5, 16, 1];
+          map.setLayoutProperty('bus-stops', 'icon-size', sizeExpression);
+        }
+
+        if (map.getLayer('selected-stop-bus')) {
+          map.setPaintProperty('selected-stop-bus', 'icon-opacity', 1);
+          // Maintain consistent sizing
+          const selectedSize = ['interpolate', ['linear'], ['zoom'], 12, 0.5, 16, 1];
+          map.setLayoutProperty('selected-stop-bus', 'icon-size', selectedSize);
+        }
+      } catch (e) { console.error('[MapGL] Error updating highlight styles:', e); }
     } else {
-      // Reset opacity if no selection
+      // Reset styles if no selection
       try {
-        // Cross-Fade: Main In, Selected Out
-        map.setPaintProperty('bus-stops', 'icon-opacity', 1);
+        if (map.getLayer('bus-stops')) {
+          map.setPaintProperty('bus-stops', 'icon-opacity', 1);
+          map.setLayoutProperty('bus-stops', 'icon-size', ['interpolate', ['linear'], ['zoom'], 12, 0.5, 16, 1]);
+        }
 
-        map.setPaintProperty('selected-stop-bus', 'icon-opacity', 0);
-        map.setPaintProperty('selected-stop-darkener', 'icon-opacity', 0);
-      } catch { }
+        if (map.getLayer('selected-stop-bus')) {
+          map.setPaintProperty('selected-stop-bus', 'icon-opacity', 0);
+        }
+      } catch (e) { }
     }
 
-  }, [selectedStop]);
+  }, [selectedStop, highlightedStopIds]); // Added highlightedStopIds dependency
 
   // Stop click handlers effect
   useEffect(() => {
@@ -460,6 +510,22 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
     }, 120000);
     return () => clearInterval(id);
   }, [socket]);
+
+  // Handle programmatic moves from custom events (e.g. location button click)
+  useEffect(() => {
+    const handleMapMove = (e) => {
+      const map = mapRef.current;
+      if (!map) return;
+      const { center, zoom, duration = 1000 } = e.detail || {};
+      if (center) {
+        if (programmaticMoveRef) programmaticMoveRef.current = true;
+        map.flyTo({ center, zoom: zoom || DEFAULT_ZOOM, duration, essential: true });
+      }
+    };
+
+    window.addEventListener('map-move', handleMapMove);
+    return () => window.removeEventListener('map-move', handleMapMove);
+  }, [programmaticMoveRef]);
 
   return (
     <div className="absolute inset-0 z-0 h-full w-full">

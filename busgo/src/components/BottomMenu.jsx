@@ -16,13 +16,14 @@ const BottomMenu = ({
     currentPage,
     setCurrentPage,
     selectedStop,
-    handleStopSelect,
+    onStopSelect, // Fix: App.jsx passes onStopSelect
     handleRefreshClick,
     isRefreshing,
     userLocation,
     isStandalone,
     selectedStopRef,
     menuScrollRef,
+    onLocationClick,
     cardsPerPage = 50
 }) => {
     // Constants for positions
@@ -359,9 +360,16 @@ const BottomMenu = ({
                     <div className="relative">
                         <div className="w-12 h-1.5 bg-gray-600 rounded-full mx-auto mb-1 drag-handle"></div>
                         {userLocation && (
-                            <div className="absolute left-0 top-0 text-gray-400 text-sm">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onLocationClick && onLocationClick();
+                                }}
+                                className="absolute left-0 top-0 text-gray-400 hover:text-white transition-colors duration-200 z-[80]"
+                                aria-label="Center on my location"
+                            >
                                 <img src={locationIcon} alt="Location" className="w-5 h-5 opacity-60 m-1" />
-                            </div>
+                            </button>
                         )}
                         <button
                             onClick={handleRefreshClick}
@@ -397,7 +405,7 @@ const BottomMenu = ({
                             <StopItem
                                 key={stop.uniqueStopPointId}
                                 stop={stop}
-                                handleStopSelect={() => handleStopSelect(stop)}
+                                handleStopSelect={() => onStopSelect && onStopSelect(stop)}
                                 isSelected={selectedStop && selectedStop.gtfsId === stop.gtfsId}
                                 ref={selectedStop && selectedStop.gtfsId === stop.gtfsId ? selectedStopRef : null}
                             />
