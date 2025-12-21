@@ -5,3 +5,4 @@ type_combos.txt
 unique_types.txt
 busgo/vite.config.js
 cmdlog.md
+/server/cache

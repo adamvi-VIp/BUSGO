@@ -405,6 +405,35 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
 
   }, [selectedStop, highlightedStopIds]); // Added highlightedStopIds dependency
 
+  // Effect to fit bounds to whole route when highlightedStopIds changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !highlightedStopIds || highlightedStopIds.length < 2) return;
+
+    // Filter relevant stops to get coordinates
+    const routeStops = (stops || []).filter(s => highlightedStopIds.includes(s.uniqueStopPointId));
+    if (routeStops.length < 2) return;
+
+    try {
+      const bounds = new maplibregl.LngLatBounds();
+      routeStops.forEach(s => {
+        if (s.lon !== undefined && s.lat !== undefined && !isNaN(s.lon) && !isNaN(s.lat)) {
+          bounds.extend([s.lon, s.lat]);
+        }
+      });
+
+      if (!bounds.isEmpty()) {
+        map.fitBounds(bounds, {
+          padding: { top: 150, bottom: 250, left: 50, right: 50 },
+          maxZoom: 16,
+          duration: 1000
+        });
+      }
+    } catch (e) {
+      console.error('[MapGL] Error fitting bounds to route:', e);
+    }
+  }, [highlightedStopIds, stops]);
+
   // Stop click handlers effect
   useEffect(() => {
     const map = mapRef.current;

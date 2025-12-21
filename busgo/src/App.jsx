@@ -578,8 +578,24 @@ function App() {
         const handleTripPathData = (data) => {
             if (data && Array.isArray(data.stops)) {
                 console.log('Received trip path stops:', data.stops.length);
-                // Extract stop IDs
-                // Ensure we handle stop_id string format correctly
+
+                // Map to internal format and merge into mapStops so they actually appear on map
+                const mappedStops = data.stops.map(s => ({
+                    uniqueStopPointId: s.stop_id,
+                    gtfsId: s.stop_id,
+                    name: s.stop_name,
+                    lat: s.lat,
+                    lon: s.lon,
+                    // Try to preserve type from selected stop if available
+                    mainTrafficType: selectedStop?.mainTrafficType || 'bus'
+                }));
+
+                setMapStops(prev => {
+                    const existingIds = new Set(prev.map(st => st.uniqueStopPointId));
+                    const newStops = mappedStops.filter(st => !existingIds.has(st.uniqueStopPointId));
+                    return [...prev, ...newStops];
+                });
+
                 const stopIds = data.stops.map(s => s.stop_id);
                 setTripRouteStops(stopIds);
             }
