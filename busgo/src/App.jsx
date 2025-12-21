@@ -171,6 +171,8 @@ const Arrival = React.forwardRef(({ arrival, onDepartureClick, isActive }, ref) 
 const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDepartureClick, activeTripId, setActiveTripId, setTripRouteStops }) => {
     const { name, platform, zone } = stop;
 
+    // Sticky Focus State: remembers the "intended" active trip even if it disappears momentarily
+    const [autoRefocusTripId, setAutoRefocusTripId] = React.useState(null);
 
     const hasDepartures = realTimeData && realTimeData.departures && realTimeData.departures.length > 0;
 
@@ -180,6 +182,21 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
         const interval = setInterval(() => setNow(Date.now()), 1000);
         return () => clearInterval(interval);
     }, []);
+
+    // Wrapper to intercept clicks and manage sticky state
+    const handleDepartureClick = (arrival) => {
+        if (arrival && arrival.trip) {
+            if (activeTripId === arrival.trip.id) {
+                // User explicitly toggled OFF - clear sticky state
+                setAutoRefocusTripId(null);
+            } else {
+                // User explicitly toggled ON - set sticky state
+                setAutoRefocusTripId(arrival.trip.id);
+            }
+        }
+        // Call original prop
+        if (onDepartureClick) onDepartureClick(arrival);
+    };
 
     const processedDepartures = React.useMemo(() => {
         if (!realTimeData || !realTimeData.departures) return [];
@@ -258,16 +275,27 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
         return sorted;
     }, [realTimeData, activeTripId, now, stop.lines]);
 
-    // Effect to clear active trip focus if it departs
+    // Effect to clear active trip focus if it departs (or restore if it returns)
     React.useEffect(() => {
-        if (activeTripId && realTimeData && realTimeData.departures) {
-            const isActivePresent = processedDepartures.some(d => d.trip.id === activeTripId);
-            if (!isActivePresent) {
-                setActiveTripId(null);
-                if (setTripRouteStops) setTripRouteStops(null);
+        if (!realTimeData || !realTimeData.departures) return;
+
+        // Check if the currently active trip is still in the list
+        const isActivePresent = activeTripId && processedDepartures.some(d => d.trip.id === activeTripId);
+
+        if (activeTripId && !isActivePresent) {
+            // It disappeared! Unfocus.
+            setActiveTripId(null);
+            if (setTripRouteStops) setTripRouteStops(null);
+        } else if (!activeTripId && autoRefocusTripId) {
+            // Nothing is focused, but we have a "Sticky" ID. Check if it's back in the list!
+            const stickyTrip = processedDepartures.find(d => d.trip.id === autoRefocusTripId);
+            if (stickyTrip) {
+                console.log('Sticky Focus: Trip reappeared, restoring focus!', autoRefocusTripId);
+                setActiveTripId(autoRefocusTripId);
+                if (onDepartureClick) onDepartureClick(stickyTrip); // Trigger the path fetch
             }
         }
-    }, [processedDepartures, activeTripId, setActiveTripId, setTripRouteStops, realTimeData]);
+    }, [processedDepartures, activeTripId, setActiveTripId, setTripRouteStops, realTimeData, autoRefocusTripId, onDepartureClick]);
 
     return (
         <>
@@ -320,7 +348,7 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
                                         <Arrival
                                             key={arrival.route.short_name}
                                             arrival={arrival}
-                                            onDepartureClick={onDepartureClick}
+                                            onDepartureClick={handleDepartureClick}
                                             isActive={activeTripId === (arrival.trip.id)}
                                         />
                                     ))}
