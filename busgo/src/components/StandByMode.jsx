@@ -39,11 +39,23 @@ const StandByMode = ({ activeTripId, realTimeData }) => {
     };
 
     const getDelay = (arrival) => {
-        if (arrival?.delay_min === undefined || arrival?.delay_min === null) return null;
-        const delay = arrival.delay_min;
-        if (delay === 0) return { text: 'On time', color: 'text-green-400' };
-        if (delay > 0) return { text: `+${delay} min`, color: 'text-red-400' };
-        return { text: `${delay} min`, color: 'text-blue-400' };
+        // App.jsx uses arrival?.delay?.seconds, so we should too.
+        // Fallback to delay_min just in case, but prefer seconds.
+        let delaySeconds = arrival?.delay?.seconds;
+        if (delaySeconds === undefined && arrival?.delay_min !== undefined) {
+            delaySeconds = arrival.delay_min * 60;
+        }
+
+        if (delaySeconds === undefined || delaySeconds === null) return null;
+
+        const absSeconds = Math.abs(delaySeconds);
+        const mins = Math.floor(absSeconds / 60);
+        const secs = absSeconds % 60;
+        const timeString = mins > 0 ? `${mins} min ${secs} s` : `${secs} s`;
+
+        if (delaySeconds === 0) return { text: 'On time', color: 'text-green-400' };
+        if (delaySeconds > 0) return { text: `+${timeString}`, color: 'text-red-400' };
+        return { text: `-${timeString}`, color: 'text-blue-400' };
     };
 
     const timeData = activeArrival ? getDisplayTime(activeArrival) : null;
@@ -71,67 +83,69 @@ const StandByMode = ({ activeTripId, realTimeData }) => {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
-                        className="w-full h-full relative"
+                        className="w-full h-full flex flex-col p-4 md:p-8"
                     >
-                        {/* CENTER: BIG TIME */}
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="flex items-baseline justify-center leading-none text-white drop-shadow-2xl gap-8">
+                        {/* CENTER: BIG TIME (Takes available space) */}
+                        <div className="flex-1 flex items-center justify-center min-h-0">
+                            <div className="flex items-baseline justify-center leading-none text-white drop-shadow-2xl gap-[2vw]">
                                 {/* Minutes - Only show if > 0 */}
                                 {timeData.minutes > 0 && (
                                     <div className="flex items-baseline">
-                                        <span className="text-[14rem] font-bold tracking-tighter tabular-nums">{timeData.minutes}</span>
-                                        <span className="text-5xl font-medium text-gray-400 ml-4">min</span>
+                                        <span className="text-[42vh] font-bold tracking-tighter tabular-nums">{timeData.minutes}</span>
+                                        <span className="text-[10vh] font-medium text-gray-400 ml-[1vw]">min</span>
                                     </div>
                                 )}
                                 {/* Seconds */}
                                 <div className="flex items-baseline">
-                                    <span className="text-[14rem] font-bold tracking-tighter tabular-nums text-gray-200">{timeData.seconds.toString().padStart(2, '0')}</span>
-                                    <span className="text-5xl font-medium text-gray-500 ml-4">s</span>
+                                    <span className="text-[42vh] font-bold tracking-tighter tabular-nums text-gray-200">{timeData.seconds.toString().padStart(2, '0')}</span>
+                                    <span className="text-[10vh] font-medium text-gray-500 ml-[1vw]">s</span>
                                 </div>
                             </div>
                         </div>
 
-                        {/* BOTTOM LEFT: Bus Info */}
-                        <div className="absolute bottom-8 left-10 flex flex-col items-start gap-2">
-                            <div className="flex items-center gap-4">
-                                <div className="bg-yellow-500 text-black text-5xl font-bold px-6 py-2 rounded-xl shadow-lg">
-                                    {activeArrival.route.short_name}
-                                </div>
-                                <div className="flex flex-col">
-                                    <span className="text-white text-3xl font-bold truncate max-w-[400px]">
-                                        {activeArrival.trip.headsign}
-                                    </span>
-                                    {/* Scheduled Arrival & AC Info Row */}
-                                    <div className="flex items-center gap-4 mt-2">
-                                        {/* Scheduled Arrival Time */}
-                                        <div className="text-2xl font-bold text-white bg-gray-800/80 px-3 py-1 rounded-lg">
-                                            {timeData.targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
-                                        </div>
-
-                                        {/* AC Indicator */}
-                                        {activeArrival.trip.is_air_conditioned && (
-                                            <div className="flex items-center gap-2 text-cyan-400">
-                                                <img src={iceIcon} className="w-6 h-6 ice-icon-ac" alt="AC" />
-                                                <span className="text-lg font-medium">AC Equipped</span>
+                        {/* BOTTOM ROW: Info & Delay */}
+                        <div className="flex justify-between items-end shrink-0 w-full mb-2">
+                            {/* LEFT: Bus Info */}
+                            <div className="flex flex-col items-start gap-[1vh]">
+                                <div className="flex items-center gap-[2vw]">
+                                    <div className="bg-yellow-500 text-black text-[8vh] font-bold px-[3vh] py-[1vh] rounded-[2vh] shadow-lg leading-none">
+                                        {activeArrival.route.short_name}
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-white text-[5vh] font-bold truncate max-w-[55vw] leading-tight">
+                                            {activeArrival.trip.headsign}
+                                        </span>
+                                        {/* Scheduled Arrival & AC Info Row */}
+                                        <div className="flex items-center gap-[2vw] mt-[0.5vh]">
+                                            {/* Scheduled Arrival Time */}
+                                            <div className="text-[4vh] font-bold text-white bg-gray-800/80 px-[2vh] py-[0.5vh] rounded-lg leading-none">
+                                                {timeData.targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
                                             </div>
-                                        )}
+
+                                            {/* AC Indicator */}
+                                            {activeArrival.trip.is_air_conditioned && (
+                                                <div className="flex items-center gap-[1vh] text-cyan-400">
+                                                    <img src={iceIcon} className="w-[4vh] h-[4vh] ice-icon-ac" alt="AC" />
+                                                    <span className="text-[3vh] font-medium">AC Equipped</span>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
+
+                            {/* RIGHT: Delay Info */}
+                            {delayData && (
+                                <div className="text-right">
+                                    <div className={`text-[9vh] font-bold ${delayData.color} drop-shadow-lg leading-none`}>
+                                        {delayData.text}
+                                    </div>
+                                    <div className="text-gray-500 text-[3vh] font-medium mt-[0.5vh] uppercase tracking-wider">
+                                        Real-time Delay
+                                    </div>
+                                </div>
+                            )}
                         </div>
-
-                        {/* BOTTOM RIGHT: Delay Info */}
-                        {delayData && (
-                            <div className="absolute bottom-8 right-10 text-right">
-                                <div className={`text-6xl font-bold ${delayData.color} drop-shadow-lg`}>
-                                    {delayData.text}
-                                </div>
-                                <div className="text-gray-500 text-xl font-medium mt-1 uppercase tracking-wider">
-                                    Real-time Delay
-                                </div>
-                            </div>
-                        )}
-
                     </motion.div>
                 ) : (
                     <div className="flex items-center justify-center h-full">

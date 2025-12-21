@@ -86,12 +86,14 @@ const Arrival = React.forwardRef(({ arrival, onDepartureClick, isActive }, ref) 
         const minutes = Math.floor(Math.abs(delayInSeconds) / 60);
         const seconds = Math.abs(delayInSeconds) % 60;
 
+        const timeString = minutes > 0 ? `${minutes} min ${seconds} s` : `${seconds} s`;
+
         if (delayInSeconds > 0) {
-            return `+${minutes}:${seconds.toString().padStart(2, '0')}`;
+            return `+${timeString}`;
         } else if (delayInSeconds < 0) {
-            return `-${minutes}:${seconds.toString().padStart(2, '0')}`;
+            return `-${timeString}`;
         } else {
-            return `00:00`;
+            return `On time`;
         }
     };
 
@@ -128,7 +130,7 @@ const Arrival = React.forwardRef(({ arrival, onDepartureClick, isActive }, ref) 
         >
             <div className="flex items-center gap-4 mb-1 min-w-0 flex-grow">
                 <div className="flex flex-col items-center gap-1">
-                    <span className="px-[10px] py-1 rounded-md font-bold text-center text-sm shadow-md flex-shrink-0 bg-yellow-500 text-black">
+                    <span className="px-[10px] py-1 rounded-lg font-bold text-center text-base shadow-md flex-shrink-0 bg-yellow-500 text-black">
                         {route.short_name}
                     </span>
                     {isActive && (
@@ -141,23 +143,34 @@ const Arrival = React.forwardRef(({ arrival, onDepartureClick, isActive }, ref) 
                 </div>
 
                 <div className="flex-1 min-w-0 flex flex-col justify-center">
-                    <span className="font-medium text-white break-words block whitespace-normal truncate pr-2">
-                        {trip.headsign}
-                    </span>
-                    {delayString && (
-                        <div className="text-sm text-gray-400 flex items-center gap-2 mt-0">
+                    <div className="flex items-center gap-2">
+                        <span className="font-medium text-white break-words block whitespace-normal truncate">
+                            {trip.headsign}
+                        </span>
+                        <img
+                            src={iceIcon}
+                            alt="Air Conditioning"
+                            className={`w-4 h-4 ${trip.is_air_conditioned ? 'ice-icon-ac' : 'ice-icon-no-ac'}`}
+                        />
+                    </div>
+
+                    <div className="text-sm text-gray-400 flex items-center gap-2 mt-0.5">
+                        {departure_timestamp?.scheduled && (() => {
+                            const date = new Date(departure_timestamp.scheduled);
+                            return !isNaN(date.getTime()) ? (
+                                <span className="text-gray-300 font-bold tabular-nums">
+                                    {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                </span>
+                            ) : null;
+                        })()}
+                        {delayString && (
                             <span className={`font-semibold ${delayColor}`}>{delayString}</span>
-                            <img
-                                src={iceIcon}
-                                alt="Air Conditioning"
-                                className={`w-4 h-4 ${trip.is_air_conditioned ? 'ice-icon-ac' : 'ice-icon-no-ac'}`}
-                            />
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             </div>
 
-            <div className="flex items-center gap-3 flex-shrink-0 min-w-[70px] justify-end">
+            <div className="flex items-center gap-3 flex-shrink-0 min-w-[70px] justify-end mr-2">
                 <span
                     className={`text-lg font-bold text-right ${isDeparting ? 'text-orange-400 animate-pulse' : 'text-white'}`}
                 >
@@ -1258,11 +1271,14 @@ function App() {
         try {
             const cached = localStorage.getItem(STATION_CACHE_KEY);
             if (cached) {
-                const { stop, openedAt, realTimeData: cachedData } = JSON.parse(cached);
+                const { stop, openedAt, realTimeData: cachedData, activeTripId: cachedActiveTripId } = JSON.parse(cached);
                 if (stop && openedAt && Date.now() - openedAt < STATION_CACHE_MAX_AGE) {
                     setSelectedStop(stop);
                     if (cachedData) {
                         setRealTimeData(cachedData);
+                    }
+                    if (cachedActiveTripId) {
+                        setActiveTripId(cachedActiveTripId);
                     }
                     // Fetch stops around user's location (if available)
                     const isValidLatLon = stop.lat !== undefined && stop.lon !== undefined && !isNaN(stop.lat) && !isNaN(stop.lon);
@@ -1313,12 +1329,13 @@ function App() {
             localStorage.setItem(STATION_CACHE_KEY, JSON.stringify({
                 stop: selectedStop,
                 openedAt: Date.now(),
-                realTimeData: realTimeData // Persist the departures too
+                realTimeData: realTimeData, // Persist the departures too
+                activeTripId: activeTripId // Persist the active trip
             }));
         } else {
             localStorage.removeItem(STATION_CACHE_KEY);
         }
-    }, [selectedStop, realTimeData]); // Added realTimeData dep
+    }, [selectedStop, realTimeData, activeTripId]); // Added activeTripId dep
 
     // Clear geolocation watcher on unmount
     useEffect(() => {
@@ -1361,8 +1378,11 @@ function App() {
             />
 
             <header
-                className={`absolute top-0 left-0 w-full z-20 p-4 pointer-events-none${isAndroidApp ? ' mt-20' : ''}`}
-                style={isAndroidApp ? { marginTop: 30 } : {}}
+                className={`absolute top-0 left-0 w-full z-20 px-4 pb-4 pointer-events-none${isAndroidApp ? ' mt-20' : ''}`}
+                style={{
+                    paddingTop: 'calc(1rem + env(safe-area-inset-top))',
+                    ...(isAndroidApp ? { marginTop: 30 } : {})
+                }}
             >
                 <div className="max-w-xl w-full mx-auto flex flex-col items-center gap-3 pointer-events-auto">
                     <h1 className="m-0 font-bold text-3xl text-white tracking-tighter font-onest" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.7)' }}>

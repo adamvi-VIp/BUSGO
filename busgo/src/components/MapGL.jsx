@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import busIcon from '../assets/bus-icon.png';
 import busStationBoxIcon from '../assets/busstationbox.png';
 import stationBoxIcon from '../assets/stationbox.png';
 import nightIcon from '../assets/night-icon.png';
@@ -28,6 +29,29 @@ import nightIconDimmed from '../assets/night-icon-dimmed.png';
 const DEFAULT_CENTER = [14.4378, 50.0755]; // Prague
 const DEFAULT_ZOOM = 16;
 
+function getIconName(stop, isTripActive = false, isSelectionOverlay = false) {
+  if (!stop) return 'bus-icon';
+
+  let base = 'bus-icon';
+  if (stop.is_night) {
+    base = 'night-icon';
+  } else {
+    switch (stop.mainTrafficType) {
+      case 'tram': base = 'tram-icon'; break;
+      case 'metroA': base = 'metroA-icon'; break;
+      case 'metroB': base = 'metroB-icon'; break;
+      case 'metroC': base = 'metroC-icon'; break;
+      case 'train': base = 'train-icon'; break;
+      case 'ferry': base = 'ferry-icon'; break;
+      case 'trolleybus': base = 'trolleybus-icon'; break;
+      default: base = 'bus-icon';
+    }
+  }
+
+  // If trip active OR station selected, use dimmed variant.
+  return (isTripActive || isSelectionOverlay) ? `${base}-dimmed` : base;
+}
+
 function stopsToGeoJSON(stops) {
   return {
     type: 'FeatureCollection',
@@ -36,7 +60,7 @@ function stopsToGeoJSON(stops) {
       .map(s => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
-        properties: { ...s }
+        properties: { ...s, icon_name: getIconName(s, false, false) }
       }))
   };
 }
@@ -57,7 +81,7 @@ function selectedToGeoJSON(stop, isTripActive = false) {
       ? [{
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [stop.lon, stop.lat] },
-        properties: { ...stop, id: stop.uniqueStopPointId, is_trip_active: isTripActive }
+        properties: { ...stop, id: stop.uniqueStopPointId, icon_name: getIconName(stop, isTripActive, true) }
       }]
       : []
   };
@@ -156,7 +180,8 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
         });
 
         await Promise.all([
-          loadImage('bus-icon', busStationBoxIcon),
+          loadImage('bus-icon', busIcon),
+          loadImage('selected-station-box', busStationBoxIcon),
           loadImage('station-icon', stationBoxIcon),
           loadImage('night-icon', nightIcon),
           loadImage('tram-icon', tramIcon),
@@ -182,49 +207,9 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
         // Canvas overlay generation removed (replaced by dimmed icons)
 
         // --- LAYER ORDERING STRATEGY ---
-        // 1. Selected Stop Icons (Bottom) - to be covered by darkener (REMOVED: Now uses dimmed icon directly)
         // New Strategy:
-        // 1. Selected Stop (Dimmed Icon)
-        // 2. All Other Stops (Top)
-
-        map.addSource('selected-stop', { type: 'geojson', data: selectedToGeoJSON(selectedStop) });
-
-        // 1. Selected Stop Icon (Universal - rendered UNDER the darkener)
-        // 1. Selected Stop (Dimmed version)
-        map.addLayer({
-          id: 'selected-stop-bus',
-          type: 'symbol',
-          source: 'selected-stop',
-          layout: {
-            'icon-image': [
-              'concat',
-              [
-                'case',
-                ['to-boolean', ['get', 'is_night']], 'night-icon',
-                ['match', ['get', 'mainTrafficType'],
-                  'tram', 'tram-icon',
-                  'metroA', 'metroA-icon',
-                  'metroB', 'metroB-icon',
-                  'metroC', 'metroC-icon',
-                  'train', 'train-icon',
-                  'ferry', 'ferry-icon',
-                  'trolleybus', 'trolleybus-icon',
-                  'bus-icon' // Default
-                ]
-              ],
-              ['case', ['get', 'is_trip_active'], '', '-dimmed']
-            ],
-            'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 16, 1],
-            'icon-allow-overlap': true,
-            'icon-ignore-placement': true
-          },
-          paint: {
-            'icon-opacity': 0, // Start invisible, fade in
-            'icon-opacity-transition': { duration: 300 }
-          }
-        });
-
-        // Darkener Layer REMOVED
+        // 1. All Other Stops (Bottom)
+        // 2. Selected Stop (Top)
 
         // 3. Main Stops (All stops as Bus Icons)
         map.addSource('stops', { type: 'geojson', data: stopsToGeoJSON(stops) });
@@ -235,20 +220,7 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
           source: 'stops',
           // No filter = show ALL stops
           layout: {
-            'icon-image': [
-              'case',
-              ['to-boolean', ['get', 'is_night']], 'night-icon',
-              ['match', ['get', 'mainTrafficType'],
-                'tram', 'tram-icon',
-                'metroA', 'metroA-icon',
-                'metroB', 'metroB-icon',
-                'metroC', 'metroC-icon',
-                'train', 'train-icon',
-                'ferry', 'ferry-icon',
-                'trolleybus', 'trolleybus-icon',
-                'bus-icon' // Default
-              ]
-            ],
+            'icon-image': ['get', 'icon_name'],
             'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 16, 1],
             'icon-allow-overlap': true,
             'icon-ignore-placement': true
@@ -257,6 +229,26 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
             'icon-opacity': 1,
             'icon-opacity-transition': { duration: 300 }
             // 'icon-color' removed, using icon-image match instead
+          }
+        });
+
+        // 4. Selected Stop (ALWAYS ON TOP)
+        const isTripActiveInitial = !!(highlightedStopIds && highlightedStopIds.length > 0);
+        map.addSource('selected-stop', { type: 'geojson', data: selectedToGeoJSON(selectedStop, isTripActiveInitial) });
+
+        map.addLayer({
+          id: 'selected-stop-bus',
+          type: 'symbol',
+          source: 'selected-stop',
+          layout: {
+            'icon-image': ['get', 'icon_name'],
+            'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 16, 1],
+            'icon-allow-overlap': true,
+            'icon-ignore-placement': true
+          },
+          paint: {
+            'icon-opacity': 0, // Start invisible, fade in
+            'icon-opacity-transition': { duration: 300 }
           }
         });
 
@@ -277,33 +269,20 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
 
         // Update opacity for the first time if selectedStop exists
         if (selectedStop && selectedStop.uniqueStopPointId) {
-          const id = selectedStop.uniqueStopPointId;
           try {
-            // Cross-Fade: Main Out, Selected In
-            // Opacity Logic
-            // If highlightedStopIds is active:
-            //   selectedStop -> 0 (covered by dimmed icon) - handled by selected check
-            //   in list -> 1
-            //   not in list -> 0.2
-
-            // If no highlightedStopIds:
-            //   selectedStop -> 0
-            //   others -> 1
-
-            const uniqueId = selectedStop.uniqueStopPointId;
-
+            const uniqueId = String(selectedStop.uniqueStopPointId);
             let opacityExpression;
             if (highlightedStopIds && highlightedStopIds.length > 0) {
               opacityExpression = [
                 'case',
-                ['==', ['get', 'uniqueStopPointId'], uniqueId], 0, // Hide selected (shown as dimmed icon)
+                ['==', ['string', ['get', 'uniqueStopPointId']], uniqueId], 0,
                 ['in', ['get', 'gtfsId'], ['literal', highlightedStopIds]], 1,
-                0.2 // Dim extraneous stops
+                0.2
               ];
             } else {
               opacityExpression = [
                 'case',
-                ['==', ['get', 'uniqueStopPointId'], uniqueId], 0,
+                ['==', ['string', ['get', 'uniqueStopPointId']], uniqueId], 0,
                 1
               ];
             }
@@ -314,7 +293,6 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
             if (map.getLayer('selected-stop-bus')) {
               map.setPaintProperty('selected-stop-bus', 'icon-opacity', 1);
             }
-            // map.setPaintProperty('selected-stop-darkener', 'icon-opacity', 1); // Removed
           } catch { }
         }
 
@@ -383,17 +361,16 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
     const id = selectedStop?.uniqueStopPointId;
     if (id) {
       try {
-        // Cross-Fade: Main Out, Selected In
-        const uniqueId = selectedStop.uniqueStopPointId;
+        const uniqueId = String(selectedStop?.uniqueStopPointId || '');
 
         const opacityExpression = highlightedStopIds && highlightedStopIds.length > 0
           ? ['case',
-            ['==', ['get', 'uniqueStopPointId'], uniqueId], 0,
-            ['in', ['get', 'gtfsId'], ['literal', highlightedStopIds]], 1,
+            ['==', ['string', ['get', 'uniqueStopPointId']], uniqueId], 0,
+            ['in', ['get', 'gtfsId'], ['literal', highlightedStopIds || []]], 1,
             0.2
           ]
           : ['case',
-            ['==', ['get', 'uniqueStopPointId'], uniqueId], 0,
+            ['==', ['string', ['get', 'uniqueStopPointId']], uniqueId], 0,
             1
           ];
 
