@@ -87,7 +87,12 @@ function selectedToGeoJSON(stop, isTripActive = false) {
   };
 }
 
-const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefreshing, programmaticMoveRef, setMapReady, highlightedStopIds }) => {
+const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefreshing, programmaticMoveRef,
+  setMapReady,
+  highlightedStopIds,
+  routeGeometry,
+  activeTripId
+}) => {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const lastCenterRef = useRef(null);
@@ -95,6 +100,7 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
   const busClickHandlerRef = React.useRef(null);
   const stationClickHandlerRef = React.useRef(null);
   const initialUserMoveDoneRef = useRef(false);
+  const lastFittedTripIdRef = useRef(null);
 
   useEffect(() => {
     const center = selectedStop && selectedStop.lat !== undefined && selectedStop.lon !== undefined && !isNaN(selectedStop.lat) && !isNaN(selectedStop.lon)
@@ -210,6 +216,31 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
         // New Strategy:
         // 1. All Other Stops (Bottom)
         // 2. Selected Stop (Top)
+
+        // 3. Route Line (Bottom-most of our layers)
+        map.addSource('route-line', {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            geometry: routeGeometry || { type: 'LineString', coordinates: [] },
+            properties: {}
+          }
+        });
+
+        map.addLayer({
+          id: 'route-line-layer',
+          type: 'line',
+          source: 'route-line',
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round'
+          },
+          paint: {
+            'line-color': '#3b82f6', // Bright blue
+            'line-width': 4,
+            'line-opacity': 0.8
+          }
+        });
 
         // 3. Main Stops (All stops as Bus Icons)
         map.addSource('stops', { type: 'geojson', data: stopsToGeoJSON(stops) });
@@ -366,8 +397,11 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
         const opacityExpression = highlightedStopIds && highlightedStopIds.length > 0
           ? ['case',
             ['==', ['string', ['get', 'uniqueStopPointId']], uniqueId], 0,
-            ['in', ['get', 'gtfsId'], ['literal', highlightedStopIds || []]], 1,
-            0.2
+            ['any',
+              ['in', ['string', ['get', 'uniqueStopPointId']], ['literal', highlightedStopIds.map(String)]],
+              ['in', ['string', ['get', 'gtfsId']], ['literal', highlightedStopIds.map(String)]]
+            ], 1,
+            0.15
           ]
           : ['case',
             ['==', ['string', ['get', 'uniqueStopPointId']], uniqueId], 0,
@@ -405,10 +439,15 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
 
   }, [selectedStop, highlightedStopIds]); // Added highlightedStopIds dependency
 
-  // Effect to fit bounds to whole route when highlightedStopIds changes
+  // Fit to route effect - ONLY ONCE PER TRIP
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !highlightedStopIds || highlightedStopIds.length < 2) return;
+    if (!map || !highlightedStopIds || highlightedStopIds.length < 2 || !activeTripId) return;
+
+    // Only fit if this is a NEW trip focus
+    if (lastFittedTripIdRef.current === activeTripId) {
+      return;
+    }
 
     // Filter relevant stops to get coordinates
     const routeStops = (stops || []).filter(s => highlightedStopIds.includes(s.uniqueStopPointId));
@@ -423,16 +462,18 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
       });
 
       if (!bounds.isEmpty()) {
+        console.log('[MapGL] Fitting bounds for trip:', activeTripId);
         map.fitBounds(bounds, {
           padding: { top: 150, bottom: 250, left: 50, right: 50 },
           maxZoom: 16,
           duration: 1000
         });
+        lastFittedTripIdRef.current = activeTripId;
       }
     } catch (e) {
       console.error('[MapGL] Error fitting bounds to route:', e);
     }
-  }, [highlightedStopIds, stops]);
+  }, [highlightedStopIds, activeTripId]); // Removed 'stops' dependency to allow user manual pan/zoom after initial fit
 
   // Stop click handlers effect
   useEffect(() => {
@@ -450,9 +491,33 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
       const handler = (e) => {
         const f = e.features && e.features[0];
         if (!f) return;
-        const id = f.properties && f.properties.uniqueStopPointId;
-        if (!id) return;
-        const stop = (stops || []).find(s => s.uniqueStopPointId === id);
+        const id = f.properties && f.properties.uniqueStopPointId ? String(f.properties.uniqueStopPointId) : null;
+        const gtfsIdFallback = f.properties && f.properties.gtfsId ? String(f.properties.gtfsId) : null;
+
+        console.log('[MapGL] Clicked Feature IDs (Normalized):', { unique: id, gtfs: gtfsIdFallback });
+
+        let stop = null;
+
+        // Primary Lookup
+        if (id) {
+          stop = (stops || []).find(s => s.uniqueStopPointId === id);
+        }
+
+        // Secondary Lookup (Fallback)
+        if (!stop && gtfsIdFallback) {
+          console.warn('[MapGL] Primary ID lookup failed. Trying GTFS ID fallback:', gtfsIdFallback);
+          stop = (stops || []).find(s => s.gtfsId === gtfsIdFallback);
+        }
+
+        if (!stop) {
+          console.error('[MapGL] Stop NOT found in stops array. Lookup failed for:', { unique: id, gtfs: gtfsIdFallback });
+          if (stops && stops.length > 0) {
+            console.log('[MapGL] Sample available IDs:', stops.slice(0, 3).map(s => `${s.uniqueStopPointId}|${s.gtfsId}`));
+          }
+        } else {
+          console.log('[MapGL] Stop found:', stop.name);
+        }
+
         if (stop && typeof onStopSelect === 'function') onStopSelect(stop);
       };
       busClickHandlerRef.current = handler;
@@ -477,6 +542,20 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
 
     return () => detach();
   }, [stops, onStopSelect]);
+
+  // Update route line geometry
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const src = map.getSource && map.getSource('route-line');
+    if (src && src.setData) {
+      src.setData({
+        type: 'Feature',
+        geometry: routeGeometry || { type: 'LineString', coordinates: [] },
+        properties: {}
+      });
+    }
+  }, [routeGeometry]);
 
   // Camera movement: selected stop only (do not move on userLocation updates)
   useEffect(() => {

@@ -40,10 +40,26 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const app = express();
-const httpServer = createServer(app);
-const io = new Server(httpServer, {
-    cors: { origin: "*" },
+const server = createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "*", // Allow all origins for dev
+        methods: ["GET", "POST"]
+    },
 });
+
+// --- CRASH PREVENTION ---
+process.on('uncaughtException', (err) => {
+    console.error('[CRITICAL] Uncaught Exception:', err);
+    // Keep server running
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[CRITICAL] Unhandled Rejection at:', promise, 'reason:', reason);
+    // Keep server running
+});
+
+const PORT = process.env.PORT || 3001;
 
 // --- API Key ---
 function getApiKey() {
@@ -75,6 +91,138 @@ function getStopNameById(stopId) {
 
 function formatTime(date) {
     return date.toTimeString().split(' ')[0];
+}
+
+// --- Spatial Filtering ---
+function filterGeometry(geometry, stops) {
+    if (!geometry || !stops || stops.length === 0) return geometry;
+    if (geometry.type !== 'MultiLineString' && geometry.type !== 'LineString') return geometry;
+
+    const segments = geometry.type === 'LineString' ? [geometry.coordinates] : geometry.coordinates;
+    const thresholdKm = 0.25; // 250m for stop-to-segment mapping
+    const connectivityThresholdKm = 0.1; // 100m to bridge minor data gaps
+
+    // 1. Map stops to segment indices (with force-match fallback)
+    const stopSegments = stops.map(stop => {
+        const matches = [];
+        let minStopDist = Infinity;
+        let closestIdx = -1;
+
+        segments.forEach((line, idx) => {
+            let localMin = Infinity;
+            line.forEach(p => {
+                const d = getDistanceFromLatLonInKm(stop.lat, stop.lon, p[1], p[0]);
+                if (d < localMin) localMin = d;
+            });
+
+            if (localMin < thresholdKm) {
+                matches.push(idx);
+            }
+            if (localMin < minStopDist) {
+                minStopDist = localMin;
+                closestIdx = idx;
+            }
+        });
+
+        // Ensure every stop hits at least one segment
+        if (matches.length === 0 && closestIdx !== -1) {
+            matches.push(closestIdx);
+        }
+        return matches;
+    });
+
+    // 2. Build connectivity graph
+    // We connect segments if their endpoints are near each other, 
+    // or if an endpoint is near ANY part of another segment (supports T-junctions)
+    const adj = Array.from({ length: segments.length }, () => new Set());
+    for (let i = 0; i < segments.length; i++) {
+        for (let j = i + 1; j < segments.length; j++) {
+            const segA = segments[i];
+            const segB = segments[j];
+            const endA = [segA[0], segA[segA.length - 1]];
+            const endB = [segB[0], segB[segB.length - 1]];
+
+            // Check endpoint to endpoint (fast)
+            let isConnected = endA.some(pA =>
+                endB.some(pB => getDistanceFromLatLonInKm(pA[1], pA[0], pB[1], pB[0]) < connectivityThresholdKm)
+            );
+
+            // Check endpoint to any point (resilient for T-junctions)
+            if (!isConnected) {
+                isConnected = endA.some(pA =>
+                    segB.some(pB => getDistanceFromLatLonInKm(pA[1], pA[0], pB[1], pB[0]) < connectivityThresholdKm)
+                ) || endB.some(pB =>
+                    segA.some(pA => getDistanceFromLatLonInKm(pB[1], pB[0], pA[1], pA[0]) < connectivityThresholdKm)
+                );
+            }
+
+            if (isConnected) {
+                adj[i].add(j);
+                adj[j].add(i);
+            }
+        }
+    }
+
+    const keepIndices = new Set();
+
+    // 3. Find segments connecting consecutive stops
+    for (let i = 0; i < stopSegments.length - 1; i++) {
+        const starts = stopSegments[i];
+        const ends = stopSegments[i + 1];
+        if (starts.length === 0 || ends.length === 0) continue;
+
+        // BFS for shortest path (in terms of segments)
+        const queue = starts.map(s => ({ node: s, path: [s] }));
+        const visited = new Set(starts);
+        let foundPath = null;
+
+        while (queue.length > 0) {
+            const { node, path } = queue.shift();
+            if (ends.includes(node)) {
+                foundPath = path;
+                break;
+            }
+            if (path.length > 100) continue; // Increased safety limit
+
+            for (const neighbor of adj[node]) {
+                if (!visited.has(neighbor)) {
+                    visited.add(neighbor);
+                    queue.push({ node: neighbor, path: [...path, neighbor] });
+                }
+            }
+        }
+
+        if (foundPath) {
+            foundPath.forEach(idx => keepIndices.add(idx));
+        } else {
+            // Pathfinding failed between two stations. 
+            // Fallback: keep segments spatially between the two stops
+            const stopA = stops[i];
+            const stopB = stops[i + 1];
+            const centerLat = (stopA.lat + stopB.lat) / 2;
+            const centerLon = (stopA.lon + stopB.lon) / 2;
+            const radius = getDistanceFromLatLonInKm(stopA.lat, stopA.lon, stopB.lat, stopB.lon) / 2 + 0.5;
+
+            segments.forEach((line, idx) => {
+                const isNear = line.some(p => getDistanceFromLatLonInKm(centerLat, centerLon, p[1], p[0]) < radius);
+                if (isNear) keepIndices.add(idx);
+            });
+        }
+    }
+
+    // Always keep segments near the first and last stops
+    if (stopSegments.length > 0) {
+        stopSegments[0].forEach(idx => keepIndices.add(idx));
+        stopSegments[stopSegments.length - 1].forEach(idx => keepIndices.add(idx));
+    }
+
+    // If we filtered EVERYTHING out, return original
+    if (keepIndices.size === 0) return geometry;
+
+    return {
+        type: 'MultiLineString',
+        coordinates: segments.filter((_, idx) => keepIndices.has(idx))
+    };
 }
 
 // --- Terminal UI ---
@@ -171,10 +319,10 @@ async function refreshStationsCache() {
             );
             const rawStops = allStops
                 .filter(stop => stop.gtfsIds && stop.gtfsIds[0])
-                .map((stop, index) => {
+                .map((stop) => {
                     const gtfsId = stop.gtfsIds[0];
                     return {
-                        uniqueStopPointId: `${gtfsId}-${index}`,
+                        uniqueStopPointId: gtfsId, // Stable ID: use directly
                         gtfsId: gtfsId,
                         gtfsIds: stop.gtfsIds,
                         name: stop.groupName,
@@ -184,7 +332,17 @@ async function refreshStationsCache() {
                         wheelchairAccess: stop.wheelchairAccess,
                         platform: stop.platform || null,
                         lines: stop.lines || [],
-                        mainTrafficType: stop.mainTrafficType || null,
+                        mainTrafficType: (() => {
+                            // Professional refinement of traffic type
+                            if (stop.mainTrafficType === 'metro' || stop.type === 'metro') {
+                                const lines = stop.lines || [];
+                                if (lines.some(l => l.name === 'A')) return 'metroA';
+                                if (lines.some(l => l.name === 'B')) return 'metroB';
+                                if (lines.some(l => l.name === 'C')) return 'metroC';
+                                return 'metroA'; // Fallback
+                            }
+                            return stop.mainTrafficType || stop.type || 'bus';
+                        })(),
                         is_night: (() => {
                             const lines = stop.lines || [];
                             if (lines.length === 0) return stop.is_night || false;
@@ -216,13 +374,21 @@ async function refreshStationsCache() {
 
             // --- PROXIMITY GROUPING (±0.01m) ---
             const groupedStops = [];
-            const THRESHOLD_KM = 0.00001; // 0.01 meters
+            const THRESHOLD_KM = 0.05; // 50 meters (increased from 0.01m to deduplicate physical locations)
 
             for (const stop of rawStops) {
-                // Find potential existing group within threshold
-                let group = groupedStops.find(g =>
-                    getDistanceFromLatLonInKm(stop.lat, stop.lon, g.lat, g.lon) < THRESHOLD_KM
-                );
+                // Find potential existing group within threshold AND with same/similar name
+                let group = groupedStops.find(g => {
+                    const dist = getDistanceFromLatLonInKm(stop.lat, stop.lon, g.lat, g.lon);
+                    if (dist >= THRESHOLD_KM) return false;
+
+                    // Name matching check: normalized comparison
+                    const n1 = stop.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                    const n2 = g.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+                    // If names are reasonably similar or one contains the other, they belong together
+                    return n1.includes(n2) || n2.includes(n1);
+                });
 
                 if (group) {
                     // Merge into existing group
@@ -386,16 +552,24 @@ async function fetchTripStops(tripId) {
                 const props = feature.properties || {};
                 const coords = feature.geometry?.coordinates || []; // [lon, lat]
 
-                let stopId = props.stop_id; // Try to use provided ID first
+                let stopId = props.stop_id;
+                let resolvedUniqueId = null;
+                let resolvedStation = null;
 
-                // If stop_id is missing (common in this endpoint), match by coordinates
-                if (!stopId && coords.length === 2) {
+                // 1. Try to find the station in our cache that contains this GTFS ID
+                if (stopId) {
+                    resolvedStation = processedStopsCache.find(s =>
+                        s.gtfsId === stopId || (Array.isArray(s.gtfsIds) && s.gtfsIds.includes(stopId))
+                    );
+                    if (resolvedStation) resolvedUniqueId = resolvedStation.uniqueStopPointId;
+                }
+
+                // 2. Fallback: match by coordinates if ID not found or missing
+                if (!resolvedUniqueId && coords.length === 2) {
                     const lon = coords[0];
                     const lat = coords[1];
-
-                    // Find closest station in cache
                     let closest = null;
-                    let minDist = 0.05; // 50m threshold
+                    let minDist = 0.1; // 100m threshold (increased for better stability)
 
                     for (const station of processedStopsCache) {
                         const dist = getDistanceFromLatLonInKm(lat, lon, station.lat, station.lon);
@@ -406,22 +580,26 @@ async function fetchTripStops(tripId) {
                     }
 
                     if (closest) {
-                        // Use the primary gtfsId from our station cache
-                        stopId = closest.gtfsId;
-                        if (DEBUG_LOGS) console.log(`[API] Resolved ${props.stop_name} to ${stopId} via coordinates`);
+                        resolvedStation = closest;
+                        resolvedUniqueId = closest.uniqueStopPointId;
                     }
                 }
 
                 return {
-                    stop_id: stopId || `lat:${coords[1]}:lon:${coords[0]}`, // Fallback
+                    stop_id: String(resolvedUniqueId || stopId || `lat:${coords[1]}:lon:${coords[0]}`), // Fallback & Force String
                     stop_name: props.stop_name,
                     arrival_time: props.arrival_time,
                     departure_time: props.departure_time,
                     stop_sequence: props.stop_sequence,
                     lat: coords[1],
-                    lon: coords[0]
+                    lon: coords[0],
+                    mainTrafficType: resolvedStation?.mainTrafficType || null,
+                    is_night: resolvedStation?.is_night || false
                 };
             });
+
+            // Sort by sequence to ensure connectivity logic works
+            resolvedStops.sort((a, b) => (a.stop_sequence || 0) - (b.stop_sequence || 0));
 
             return resolvedStops;
         }
@@ -482,32 +660,45 @@ io.on('connection', (socket) => {
     };
 
     socket.on('requestDepartures', async (stopId) => {
-        if (!stopId) return;
+        try {
+            console.log(`[SOCKET] Received requestDepartures for stopId: ${stopId}`);
+            if (!stopId) {
+                console.warn('[SOCKET] Request missing stopId');
+                return;
+            }
 
-        // One user, one timer: Clear any existing monitoring for this socket before starting new
-        clearMonitoringForSocket(socket.id);
+            // One user, one timer: Clear any existing monitoring for this socket before starting new
+            clearMonitoringForSocket(socket.id);
 
-        // Track user
-        if (!usersMonitoringStop.has(stopId)) usersMonitoringStop.set(stopId, new Set());
-        usersMonitoringStop.get(stopId).add(socket.id);
+            // Track user
+            if (!usersMonitoringStop.has(stopId)) usersMonitoringStop.set(stopId, new Set());
+            usersMonitoringStop.get(stopId).add(socket.id);
 
-        // Serve Cache Immediately?
-        const now = Date.now();
-        const cached = tempDepartureCache[stopId];
+            // Serve Cache Immediately?
+            const now = Date.now();
+            const cached = tempDepartureCache[stopId];
 
-        if (cached && (now - cached.timestamp < DEPARTURE_CACHE_MAX_AGE_MS)) {
-            // Allow 8s freshness
-            socket.emit('departureData', cached.data);
-        } else if (cached) {
-            // Serve stale cache while loading
-            socket.emit('departureData', cached.data);
+            if (cached && (now - cached.timestamp < DEPARTURE_CACHE_MAX_AGE_MS)) {
+                // Allow 8s freshness
+                console.log(`[SOCKET] Serving fresh cache for ${stopId}`);
+                socket.emit('departureData', cached.data);
+            } else if (cached) {
+                // Serve stale cache while loading
+                console.log(`[SOCKET] Serving stale cache for ${stopId} while refreshing`);
+                socket.emit('departureData', cached.data);
+            } else {
+                console.log(`[SOCKET] No cache for ${stopId}, waiting for poll...`);
+            }
+
+            // Start polling if not active
+            if (!activeTimers.has(stopId)) {
+                startPolling(stopId);
+            }
+            updateStatusUI();
+        } catch (err) {
+            console.error('[SOCKET] Error in requestDepartures:', err);
+            socket.emit('departureError', { stopId, error: 'Internal server error processing departures.' });
         }
-
-        // Start polling if not active
-        if (!activeTimers.has(stopId)) {
-            startPolling(stopId);
-        }
-        updateStatusUI();
     });
 
     socket.on('stopDepartureMonitoring', (stopId) => {
@@ -526,31 +717,87 @@ io.on('connection', (socket) => {
         updateStatusUI();
     });
 
+
     socket.on('getTripPath', async (tripData) => {
-        let tripId = tripData;
+        try {
+            let tripId = tripData;
 
-        // Support receiving full trip object to find correct GTFS ID
-        if (typeof tripData === 'object' && tripData !== null) {
-            if (DEBUG_LOGS) console.log(`[DEBUG] Trip Object Keys: ${Object.keys(tripData).join(', ')}`);
+            // Support receiving full trip object to find correct GTFS ID
+            if (typeof tripData === 'object' && tripData !== null) {
+                if (DEBUG_LOGS) console.log(`[DEBUG] Trip Object Keys: ${Object.keys(tripData).join(', ')}`);
 
-            // Try to find a GTFS-specific ID field
-            if (tripData.gtfs_trip_id) {
-                tripId = tripData.gtfs_trip_id;
-                if (DEBUG_LOGS) console.log(`[API] Using GTFS Trip ID: ${tripId} (instead of ${tripData.id})`);
-            } else if (tripData.start_timestamp) {
-                tripId = tripData.id;
-            } else {
-                tripId = tripData.id;
+                // Try to find a GTFS-specific ID field
+                if (tripData.gtfs_trip_id) {
+                    tripId = tripData.gtfs_trip_id;
+                    if (DEBUG_LOGS) console.log(`[API] Using GTFS Trip ID: ${tripId} (instead of ${tripData.id})`);
+                } else if (tripData.start_timestamp) {
+                    tripId = tripData.id;
+                } else {
+                    tripId = tripData.id;
+                }
             }
+
+            if (!tripId) return;
+
+            const stops = await fetchTripStops(tripId);
+            if (!stops || stops.length === 0) {
+                const clientTripId = (typeof tripData === 'object' && tripData.id) ? tripData.id : tripId;
+                socket.emit('tripPathError', { tripId: clientTripId, error: 'No trip path data found.' });
+                return;
+            }
+
+            // Derive Route ID and find geometry (e.g. 377_... -> L377)
+            let geometry = null;
+            try {
+                const rawLine = tripId.split('_')[0];
+                const routeId = `L${rawLine}`;
+
+                if (processedLinesCache && Array.isArray(processedLinesCache.features)) {
+                    // Find ALL features for this route (variants might be in separate features)
+                    const matchingFeatures = processedLinesCache.features.filter(f => {
+                        const props = f.properties || {};
+                        const rid = (props.route_id || props.ROUTE_ID || '').toString().toUpperCase();
+                        const rsn = (props.route_short_name || props.V_LINKA || '').toString();
+                        return rid === routeId || rsn === rawLine;
+                    });
+
+                    if (matchingFeatures.length > 0) {
+                        if (DEBUG_LOGS) console.log(`[API] Found ${matchingFeatures.length} geometry features for linka ${rawLine}`);
+
+                        // Collect all segments from all matching features
+                        let allSegments = [];
+                        matchingFeatures.forEach(f => {
+                            if (f.geometry.type === 'LineString') {
+                                allSegments.push(f.geometry.coordinates);
+                            } else if (f.geometry.type === 'MultiLineString') {
+                                allSegments.push(...f.geometry.coordinates);
+                            }
+                        });
+
+                        geometry = {
+                            type: 'MultiLineString',
+                            coordinates: allSegments
+                        };
+                    }
+                }
+            } catch (e) {
+                console.error('[API] Error deriving route geometry:', e);
+            }
+
+            // Apply spatial filter to keep only relevant segments
+            if (geometry && stops && stops.length > 0) {
+                geometry = filterGeometry(geometry, stops);
+            }
+
+            // Return correct ID context for client
+            const clientTripId = (typeof tripData === 'object' && tripData.id) ? tripData.id : tripId;
+
+            socket.emit('tripPathData', { tripId: clientTripId, stops, geometry });
+        } catch (err) {
+            console.error('[SOCKET] Error in getTripPath:', err);
+            const clientTripId = (typeof tripData === 'object' && tripData.id) ? tripData.id : 'unknown';
+            socket.emit('tripPathError', { tripId: clientTripId, error: 'Internal server error fetching trip path.' });
         }
-
-        if (!tripId) return;
-
-        const stops = await fetchTripStops(tripId);
-        // Return correct ID context for client
-        const clientTripId = (typeof tripData === 'object' && tripData.id) ? tripData.id : tripId;
-
-        socket.emit('tripPathData', { tripId: clientTripId, stops });
     });
 });
 
@@ -629,8 +876,8 @@ function startPolling(stopId) {
 }
 
 // --- Start Server ---
-const PORT = process.env.PORT || 3001;
-httpServer.listen(PORT, '0.0.0.0', () => {
+// --- Start Server ---
+server.listen(PORT, '0.0.0.0', () => {
     initCaches();
     updateStatusUI();
 });

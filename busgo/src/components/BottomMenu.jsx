@@ -411,8 +411,14 @@ const BottomMenu = ({
                                 key={stop.uniqueStopPointId}
                                 stop={stop}
                                 handleStopSelect={() => onStopSelect && onStopSelect(stop)}
-                                isSelected={selectedStop && selectedStop.gtfsId === stop.gtfsId}
-                                ref={selectedStop && selectedStop.gtfsId === stop.gtfsId ? selectedStopRef : null}
+                                isSelected={selectedStop && (
+                                    (stop.gtfsId && String(selectedStop.gtfsId) === String(stop.gtfsId)) ||
+                                    (stop.uniqueStopPointId && String(selectedStop.uniqueStopPointId) === String(stop.uniqueStopPointId))
+                                )}
+                                ref={selectedStop && (
+                                    (stop.gtfsId && String(selectedStop.gtfsId) === String(stop.gtfsId)) ||
+                                    (stop.uniqueStopPointId && String(selectedStop.uniqueStopPointId) === String(stop.uniqueStopPointId))
+                                ) ? selectedStopRef : null}
                             />
                         ))
                     ) : (
