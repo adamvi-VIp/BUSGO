@@ -169,7 +169,7 @@ async function refreshStationsCache() {
                     groupName: group.name,
                 }))
             );
-            processedStopsCache = allStops
+            const rawStops = allStops
                 .filter(stop => stop.gtfsIds && stop.gtfsIds[0])
                 .map((stop, index) => {
                     const gtfsId = stop.gtfsIds[0];
@@ -213,6 +213,46 @@ async function refreshStationsCache() {
                         })()
                     };
                 });
+
+            // --- PROXIMITY GROUPING (±0.01m) ---
+            const groupedStops = [];
+            const THRESHOLD_KM = 0.00001; // 0.01 meters
+
+            for (const stop of rawStops) {
+                // Find potential existing group within threshold
+                let group = groupedStops.find(g =>
+                    getDistanceFromLatLonInKm(stop.lat, stop.lon, g.lat, g.lon) < THRESHOLD_KM
+                );
+
+                if (group) {
+                    // Merge into existing group
+                    // Merge GTFS IDs
+                    group.gtfsIds = Array.from(new Set([...group.gtfsIds, ...stop.gtfsIds]));
+
+                    // Merge lines (unique by line name/direction)
+                    const lineMap = new Map();
+                    [...group.lines, ...stop.lines].forEach(l => {
+                        const key = `${l.name}-${l.direction}-${l.direction2}`;
+                        if (!lineMap.has(key)) lineMap.set(key, l);
+                    });
+                    group.lines = Array.from(lineMap.values());
+
+                    // Merge is_night (if any part is not night, the whole isn't necessarily night, 
+                    // but usually these are same physical location so they should match. 
+                    // We'll use AND logic: if both are night, stay night.)
+                    group.is_night = group.is_night && stop.is_night;
+
+                    // If one has platform and other doesn't, keep the platform. 
+                    // If both have different platforms, we could join them, but usually 
+                    // these are just duplicate entries for the same physical pole.
+                    if (!group.platform && stop.platform) group.platform = stop.platform;
+                } else {
+                    // Start new group
+                    groupedStops.push({ ...stop });
+                }
+            }
+
+            processedStopsCache = groupedStops;
             await saveJsonFile(STATIONS_FILE, processedStopsCache);
             updateStatusUI();
         }

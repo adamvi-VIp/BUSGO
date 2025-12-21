@@ -482,6 +482,32 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
     }
   }, [selectedStop]);
 
+  // Camera Reset: When active trip focus ends, fly back to the station
+  // This handles the "Auto-Restore" map behavior
+  const prevHighlightedRef = useRef(highlightedStopIds);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const wasActive = prevHighlightedRef.current && prevHighlightedRef.current.length > 0;
+    const isActive = highlightedStopIds && highlightedStopIds.length > 0;
+
+    // If we just lost focus (Active -> None) AND we have a selected stop selected
+    if (wasActive && !isActive && selectedStop) {
+      if (selectedStop.lat !== undefined && selectedStop.lon !== undefined) {
+        if (programmaticMoveRef) programmaticMoveRef.current = true;
+        map.flyTo({
+          center: [selectedStop.lon, selectedStop.lat],
+          zoom: DEFAULT_ZOOM,
+          duration: 1200, // Slightly slower for a relaxed "return" feel
+          essential: true
+        });
+      }
+    }
+
+    prevHighlightedRef.current = highlightedStopIds;
+  }, [highlightedStopIds, selectedStop]);
+
   // One-time camera move to GPS location on first availability
   useEffect(() => {
     const map = mapRef.current;

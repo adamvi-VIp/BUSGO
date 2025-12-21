@@ -114,12 +114,16 @@ const Arrival = React.forwardRef(({ arrival, onDepartureClick, isActive }, ref) 
         <motion.div
             ref={ref}
             layout
-            initial={{ opacity: 0, scale: 0.98 }}
+            initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ type: 'spring', stiffness: 500, damping: 30, mass: 1 }}
+            transition={{
+                layout: { type: 'spring', stiffness: 230, damping: 25, mass: 1 },
+                opacity: { duration: 0.2 },
+                scale: { duration: 0.2 }
+            }}
             onClick={() => onDepartureClick && onDepartureClick(arrival)}
-            className={`flex justify-between items-center p-3 mb-2 rounded-lg border-b border-gray-800 transition-all duration-300 overflow-x-hidden -ml-1 cursor-pointer hover:bg-white/5 active:bg-white/10 ${isActive ? 'bg-cyan-500/20 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)] ring-1 ring-cyan-500/30' : ''}`}
+            className={`flex justify-between items-center p-3 mb-2 rounded-lg border-b border-gray-800 overflow-x-hidden -ml-1 cursor-pointer hover:bg-white/5 active:bg-white/10 ${isActive ? 'bg-cyan-500/20 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)] ring-1 ring-cyan-500/30' : ''}`}
         >
             <div className="flex items-center gap-4 mb-1 min-w-0 flex-grow">
                 <div className="flex flex-col items-center gap-1">
@@ -164,7 +168,7 @@ const Arrival = React.forwardRef(({ arrival, onDepartureClick, isActive }, ref) 
 });
 
 // --- Stop Modal Component ---
-const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDepartureClick, activeTripId, setActiveTripId }) => {
+const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDepartureClick, activeTripId, setActiveTripId, setTripRouteStops }) => {
     const { name, platform, zone } = stop;
 
 
@@ -241,12 +245,17 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
             return acc;
         }, {});
 
-        return Object.values(grouped)
+        const sorted = Object.values(grouped)
             .sort((a, b) => {
                 const aTime = new Date(a.departure_timestamp?.predicted || a.departure_timestamp?.scheduled).getTime();
                 const bTime = new Date(b.departure_timestamp?.predicted || b.departure_timestamp?.scheduled).getTime();
                 return aTime - bTime;
             });
+
+        if (activeTripId) {
+            return sorted.filter(d => d.trip.id === activeTripId);
+        }
+        return sorted;
     }, [realTimeData, activeTripId, now, stop.lines]);
 
     // Effect to clear active trip focus if it departs
@@ -255,14 +264,20 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
             const isActivePresent = processedDepartures.some(d => d.trip.id === activeTripId);
             if (!isActivePresent) {
                 setActiveTripId(null);
+                if (setTripRouteStops) setTripRouteStops(null);
             }
         }
-    }, [processedDepartures, activeTripId, setActiveTripId, realTimeData]);
+    }, [processedDepartures, activeTripId, setActiveTripId, setTripRouteStops, realTimeData]);
 
     return (
         <>
             <div className="fixed top-2 left-1/2 transform -translate-x-1/2 z-[60] w-full max-w-3xl mx-auto px-2 sm:px-4" style={{ pointerEvents: 'auto' }}>
-                <div className="bg-background-secondary rounded-2xl shadow-2xl border border-gray-700/50 animate-slide-up overflow-hidden"
+                <motion.div
+                    layout
+                    transition={{
+                        layout: { type: 'spring', stiffness: 230, damping: 25, mass: 1 }
+                    }}
+                    className="bg-background-secondary rounded-2xl shadow-2xl border border-gray-700/50 animate-slide-up overflow-hidden"
                     style={{
                         maxHeight: 'calc(100vh - 160px)', // 220px bottom menu + 40px gap
                         marginLeft: 'auto',
@@ -271,7 +286,7 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
                         flexDirection: 'column',
                     }}
                 >
-                    <header className="flex items-center justify-between p-4 border-b border-gray-700/50 flex-shrink-0">
+                    <motion.header layout="position" className="flex items-center justify-between p-4 border-b border-gray-700/50 flex-shrink-0">
                         <div className="flex-1">
                             <div className="flex items-center gap-2">
                                 <h2 className="m-0 text-lg font-semibold text-white truncate">{name}</h2>
@@ -293,17 +308,17 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                         </button>
-                    </header>
+                    </motion.header>
 
                     {/* Only this div scrolls */}
-                    <div className="overflow-y-auto p-4 flex-1" style={{ maxHeight: 'calc(100vh - 340px)' }}>
+                    <div className={`${activeTripId ? 'overflow-y-hidden' : 'overflow-y-auto'} p-4 flex-1`} style={{ maxHeight: 'calc(100vh - 340px)' }}>
                         {error && <div className="text-center text-red-400 p-4 bg-red-500/10 rounded-xl text-sm">{error.error}</div>}
                         {realTimeData && (
                             processedDepartures.length > 0 ? (
                                 <AnimatePresence mode="popLayout" initial={false}>
                                     {processedDepartures.map((arrival) => (
                                         <Arrival
-                                            key={arrival.trip.id}
+                                            key={arrival.route.short_name}
                                             arrival={arrival}
                                             onDepartureClick={onDepartureClick}
                                             isActive={activeTripId === (arrival.trip.id)}
@@ -311,11 +326,11 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
                                     ))}
                                 </AnimatePresence>
                             ) : (
-                                <p className="text-center text-gray-500 p-6 text-sm">No departures scheduled.</p>
+                                !isLoadingRealTime && <p className="text-center text-gray-500 p-6 text-sm">No departures scheduled.</p>
                             )
                         )}
                     </div>
-                </div>
+                </motion.div>
             </div>
         </>
     );
@@ -1406,14 +1421,23 @@ function App() {
                     error={errors.find(e => e.stopId === selectedStop.gtfsId)}
                     onDepartureClick={(arrival) => {
                         if (arrival && arrival.trip) {
-                            console.log('Departure clicked, requesting path for:', arrival.trip.id);
-                            setActiveTripId(arrival.trip.id);
-                            // Send full trip object to helper server resolve IDs
-                            socket.emit('getTripPath', arrival.trip);
+                            if (activeTripId === arrival.trip.id) {
+                                // Toggle OFF
+                                console.log('Departure clicked (Toggle ID match), clearing focus');
+                                setActiveTripId(null);
+                                setTripRouteStops(null);
+                            } else {
+                                // Toggle ON
+                                console.log('Departure clicked, requesting path for:', arrival.trip.id);
+                                setActiveTripId(arrival.trip.id);
+                                // Send full trip object to helper server resolve IDs
+                                socket.emit('getTripPath', arrival.trip);
+                            }
                         }
                     }}
                     activeTripId={activeTripId}
                     setActiveTripId={setActiveTripId}
+                    setTripRouteStops={setTripRouteStops}
                 />
             )}
             <ErrorsSection errors={errors.filter(e => !e.stopId)} removeError={removeError} />
