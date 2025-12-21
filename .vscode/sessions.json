@@ -16,11 +16,11 @@
                     ]
                 },
                 {
-                    "name": "backend",
-                    "autoExecuteCommands": true,
+                    "name": "scripts",
+                    "cwd": "scripts",
                     "color": "terminal.ansiRed",
                     "commands": [
-                        ""
+                        "node bump_version.js"
                     ]
                 }
             ]
