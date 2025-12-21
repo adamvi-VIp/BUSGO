@@ -7330,47 +7330,6 @@
       "departures": [
         {
           "arrival_timestamp": {
-            "predicted": "2025-12-21T05:30:00+01:00",
-            "scheduled": "2025-12-21T05:30:00+01:00"
-          },
-          "delay": {
-            "is_available": true,
-            "minutes": 0,
-            "seconds": 0
-          },
-          "departure_timestamp": {
-            "predicted": "2025-12-21T05:30:00+01:00",
-            "scheduled": "2025-12-21T05:30:00+01:00",
-            "minutes": "26"
-          },
-          "last_stop": {
-            "id": null,
-            "name": null
-          },
-          "route": {
-            "short_name": "377",
-            "type": 3,
-            "is_night": false,
-            "is_regional": true,
-            "is_substitute_transport": false
-          },
-          "stop": {
-            "id": "U1241Z1",
-            "platform_code": "A"
-          },
-          "trip": {
-            "direction": null,
-            "headsign": "Kostelec n.L.,Nám.",
-            "id": "377_2114_250714",
-            "is_at_stop": false,
-            "is_canceled": false,
-            "is_wheelchair_accessible": true,
-            "is_air_conditioned": true,
-            "short_name": null
-          }
-        },
-        {
-          "arrival_timestamp": {
             "predicted": "2025-12-21T06:30:00+01:00",
             "scheduled": "2025-12-21T06:30:00+01:00"
           },
@@ -7382,7 +7341,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T06:30:00+01:00",
             "scheduled": "2025-12-21T06:30:00+01:00",
-            "minutes": "86"
+            "minutes": "61"
           },
           "last_stop": {
             "id": null,
@@ -7423,7 +7382,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T07:30:00+01:00",
             "scheduled": "2025-12-21T07:30:00+01:00",
-            "minutes": "146"
+            "minutes": "121"
           },
           "last_stop": {
             "id": null,
@@ -7453,7 +7412,7 @@
         }
       ]
     },
-    "timestamp": 1766289828434
+    "timestamp": 1766291369368
   },
   "U5017Z1": {
     "data": {
@@ -18534,22 +18493,22 @@
       "departures": [
         {
           "arrival_timestamp": {
-            "predicted": "2025-12-21T05:32:00+01:00",
+            "predicted": "2025-12-21T05:32:33+01:00",
             "scheduled": "2025-12-21T05:32:00+01:00"
           },
           "delay": {
-            "is_available": false,
-            "minutes": null,
-            "seconds": null
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 33
           },
           "departure_timestamp": {
-            "predicted": "2025-12-21T05:32:00+01:00",
+            "predicted": "2025-12-21T05:32:33+01:00",
             "scheduled": "2025-12-21T05:32:00+01:00",
-            "minutes": "28"
+            "minutes": "3"
           },
           "last_stop": {
-            "id": null,
-            "name": null
+            "id": "U1246Z2",
+            "name": "Kostelec n.L.,Žel.st."
           },
           "route": {
             "short_name": "377",
@@ -18569,7 +18528,7 @@
             "is_at_stop": false,
             "is_canceled": false,
             "is_wheelchair_accessible": true,
-            "is_air_conditioned": null,
+            "is_air_conditioned": true,
             "short_name": null
           }
         },
@@ -18586,7 +18545,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T06:32:00+01:00",
             "scheduled": "2025-12-21T06:32:00+01:00",
-            "minutes": "88"
+            "minutes": "62"
           },
           "last_stop": {
             "id": null,
@@ -18627,7 +18586,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T07:32:00+01:00",
             "scheduled": "2025-12-21T07:32:00+01:00",
-            "minutes": "148"
+            "minutes": "122"
           },
           "last_stop": {
             "id": null,
@@ -18657,7 +18616,7 @@
         }
       ]
     },
-    "timestamp": 1766289839951
+    "timestamp": 1766291405710
   },
   "U339Z1P": {
     "data": {
@@ -165555,7 +165514,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T05:21:00+01:00",
             "scheduled": "2025-12-21T05:21:00+01:00",
-            "minutes": "5"
+            "minutes": "4"
           },
           "last_stop": {
             "id": null,
@@ -165596,7 +165555,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T05:41:00+01:00",
             "scheduled": "2025-12-21T05:41:00+01:00",
-            "minutes": "25"
+            "minutes": "24"
           },
           "last_stop": {
             "id": null,
@@ -165637,7 +165596,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T06:01:00+01:00",
             "scheduled": "2025-12-21T06:01:00+01:00",
-            "minutes": "45"
+            "minutes": "44"
           },
           "last_stop": {
             "id": null,
@@ -165678,7 +165637,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T06:21:00+01:00",
             "scheduled": "2025-12-21T06:21:00+01:00",
-            "minutes": "65"
+            "minutes": "64"
           },
           "last_stop": {
             "id": null,
@@ -165719,7 +165678,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T06:31:00+01:00",
             "scheduled": "2025-12-21T06:31:00+01:00",
-            "minutes": "75"
+            "minutes": "74"
           },
           "last_stop": {
             "id": null,
@@ -165760,7 +165719,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T06:41:00+01:00",
             "scheduled": "2025-12-21T06:41:00+01:00",
-            "minutes": "85"
+            "minutes": "84"
           },
           "last_stop": {
             "id": null,
@@ -165801,7 +165760,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T05:28:00+01:00",
             "scheduled": "2025-12-21T05:28:00+01:00",
-            "minutes": "12"
+            "minutes": "11"
           },
           "last_stop": {
             "id": null,
@@ -165842,7 +165801,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T05:48:00+01:00",
             "scheduled": "2025-12-21T05:48:00+01:00",
-            "minutes": "32"
+            "minutes": "31"
           },
           "last_stop": {
             "id": null,
@@ -165883,7 +165842,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T06:08:00+01:00",
             "scheduled": "2025-12-21T06:08:00+01:00",
-            "minutes": "52"
+            "minutes": "51"
           },
           "last_stop": {
             "id": null,
@@ -165924,7 +165883,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T06:28:00+01:00",
             "scheduled": "2025-12-21T06:28:00+01:00",
-            "minutes": "72"
+            "minutes": "71"
           },
           "last_stop": {
             "id": null,
@@ -165965,7 +165924,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T06:48:00+01:00",
             "scheduled": "2025-12-21T06:48:00+01:00",
-            "minutes": "92"
+            "minutes": "91"
           },
           "last_stop": {
             "id": null,
@@ -166006,7 +165965,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T07:08:00+01:00",
             "scheduled": "2025-12-21T07:08:00+01:00",
-            "minutes": "112"
+            "minutes": "111"
           },
           "last_stop": {
             "id": null,
@@ -166047,7 +166006,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T05:33:00+01:00",
             "scheduled": "2025-12-21T05:33:00+01:00",
-            "minutes": "17"
+            "minutes": "16"
           },
           "last_stop": {
             "id": null,
@@ -166088,7 +166047,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T05:53:00+01:00",
             "scheduled": "2025-12-21T05:53:00+01:00",
-            "minutes": "37"
+            "minutes": "36"
           },
           "last_stop": {
             "id": null,
@@ -166129,7 +166088,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T06:13:00+01:00",
             "scheduled": "2025-12-21T06:13:00+01:00",
-            "minutes": "57"
+            "minutes": "56"
           },
           "last_stop": {
             "id": null,
@@ -166170,7 +166129,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T06:34:00+01:00",
             "scheduled": "2025-12-21T06:34:00+01:00",
-            "minutes": "78"
+            "minutes": "77"
           },
           "last_stop": {
             "id": null,
@@ -166211,7 +166170,7 @@
           "departure_timestamp": {
             "predicted": "2025-12-21T06:54:00+01:00",
             "scheduled": "2025-12-21T06:54:00+01:00",
-            "minutes": "98"
+            "minutes": "97"
           },
           "last_stop": {
             "id": null,
@@ -166241,7 +166200,7 @@
         }
       ]
     },
-    "timestamp": 1766290585491
+    "timestamp": 1766290635514
   },
   "U714Z2P": {
     "data": {

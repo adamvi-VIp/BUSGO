@@ -18,17 +18,6 @@
     <link rel="icon" type="image/png" sizes="512x512" href="/icon-512x512.png">
     <link rel="manifest" href="/manifest.json">
     <style>
-      @media screen and (orientation:landscape) {
-        body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #111; }
-        #root { display: none; }
-        body::before {
-          content: 'Please rotate your device to portrait mode.';
-          color: #fff;
-          font-size: 1.5rem;
-          text-align: center;
-          padding: 2rem;
-        }
-      }
       /* Ensure html-splash fill transition is smooth */
       #html-splash-fill {
         transition: clip-path 1.2s cubic-bezier(0.77,0,0.175,1);

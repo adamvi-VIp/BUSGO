@@ -9,6 +9,7 @@ import SplashScreen from './components/SplashScreen';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import MapGL from './components/MapGL';
 import VersionManager from './components/VersionManager';
+import StandByMode from './components/StandByMode';
 
 
 // --- Arrival Component (for the modal) ---
@@ -1346,6 +1347,7 @@ function App() {
                 backgroundColor: '#0a0a0a', // Add the dark background color
             }}
         >
+            <StandByMode activeTripId={activeTripId} realTimeData={realTimeData} />
             <MapGL
                 stops={mapStops}
                 userLocation={userLocation}
