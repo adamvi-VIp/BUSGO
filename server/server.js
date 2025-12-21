@@ -631,6 +631,27 @@ async function initCaches() {
 
 function filterNextDeparturesOnly(departures) {
     if (!Array.isArray(departures) || departures.length === 0) return [];
+
+    const now = Date.now();
+    const PAST_THRESHOLD_MS = 60000; // 1 minute buffer
+
+    // Helper to parse timestamps robustly (copied logic from client)
+    const parseTimestamp = (ts) => {
+        if (!ts) return null;
+        if (typeof ts === 'string') {
+            const parsed = new Date(ts);
+            if (!isNaN(parsed.getTime())) return parsed.getTime();
+            // Try parsing as number string
+            const n = parseInt(ts, 10);
+            if (!isNaN(n)) return n < 1000000000000 ? n * 1000 : n;
+            return null;
+        }
+        if (typeof ts === 'number') {
+            return ts < 1000000000000 ? ts * 1000 : ts;
+        }
+        return null; // Object or other
+    };
+
     const departuresByLine = {};
     departures.forEach(departure => {
         const route = departure.route;
@@ -642,18 +663,35 @@ function filterNextDeparturesOnly(departures) {
     const nextDepartures = [];
     Object.keys(departuresByLine).forEach(lineNumber => {
         const lineDepartures = departuresByLine[lineNumber];
-        lineDepartures.sort((a, b) => {
-            const timeA = a.departure_timestamp?.predicted || a.departure_timestamp?.scheduled || 0;
-            const timeB = b.departure_timestamp?.predicted || b.departure_timestamp?.scheduled || 0;
+
+        // 1. Filter and Sort
+        const validDepartures = lineDepartures.filter(d => {
+            const rawTime = d.departure_timestamp?.predicted || d.departure_timestamp?.scheduled;
+            const timeMs = parseTimestamp(rawTime);
+            if (!timeMs) return false;
+
+            // Filter out if it's older than 1 minute ago
+            // Use > -60000 (meaning: difference is greater than -1min, so it's NOT older than 1min)
+            return (timeMs - now) > -PAST_THRESHOLD_MS;
+        });
+
+        validDepartures.sort((a, b) => {
+            const timeA = parseTimestamp(a.departure_timestamp?.predicted || a.departure_timestamp?.scheduled || 0) || 0;
+            const timeB = parseTimestamp(b.departure_timestamp?.predicted || b.departure_timestamp?.scheduled || 0) || 0;
             return timeA - timeB;
         });
-        nextDepartures.push(...lineDepartures.slice(0, 6));
+
+        // 2. Take top 6
+        nextDepartures.push(...validDepartures.slice(0, 6));
     });
+
+    // Final sort of the combined list
     nextDepartures.sort((a, b) => {
-        const timeA = a.departure_timestamp?.predicted || a.departure_timestamp?.scheduled || 0;
-        const timeB = b.departure_timestamp?.predicted || b.departure_timestamp?.scheduled || 0;
+        const timeA = parseTimestamp(a.departure_timestamp?.predicted || a.departure_timestamp?.scheduled || 0) || 0;
+        const timeB = parseTimestamp(b.departure_timestamp?.predicted || b.departure_timestamp?.scheduled || 0) || 0;
         return timeA - timeB;
     });
+
     return nextDepartures;
 }
 
