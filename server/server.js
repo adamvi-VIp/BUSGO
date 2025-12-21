@@ -516,22 +516,30 @@ async function refreshStationsCache() {
 
             for (const stop of rawStops) {
                 // Find potential existing group:
-                // 1. SHARED GTFS ID (Strongest Match)
-                // 2. Proximity + Name Match (Secondary)
+                // 1. SHARED GTFS ID + VERY STRICT PROXIMITY (1m)
+                // 2. Proximity (50m) + Name Match (Secondary)
                 let group = groupedStops.find(g => {
-                    // Check for shared GTFS IDs
-                    const sharedId = stop.gtfsIds.some(id => g.gtfsIds.includes(id));
-                    if (sharedId) return true;
-
-                    // Fallback to spatial check
                     const dist = getDistanceFromLatLonInKm(stop.lat, stop.lon, g.lat, g.lon);
+
+                    // Check for shared GTFS IDs intersection
+                    const sharedId = stop.gtfsIds.some(id => g.gtfsIds.includes(id));
+
+                    // User Request: "1m" threshold for shared ID merge 
+                    // This filters only exact API duplicates, preserving platforms that are distinct
+                    if (sharedId && dist < 0.001) return true;
+
+                    // STRICT MODE: If both have IDs but failed the strict merge above, 
+                    // assume they are distinct platforms (e.g. "Platform A" vs "Platform B" of same station).
+                    // Do NOT fall back to loose name/distance matching.
+                    if (stop.gtfsIds.length > 0 && g.gtfsIds.length > 0) return false;
+
+                    // Fallback to spatial naming check (only for stops WITHOUT rich IDs)
                     if (dist >= THRESHOLD_KM) return false;
 
-                    // Name matching check: normalized comparison
+                    // Name matching check
                     const n1 = stop.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
                     const n2 = g.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-                    // If names are reasonably similar or one contains the other, they belong together
                     return n1.includes(n2) || n2.includes(n1);
                 });
 
