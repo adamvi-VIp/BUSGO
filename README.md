@@ -9,10 +9,14 @@ A modern, real-time bus departure application for Prague, Czech Republic. Built 
 - **Location-based search** for nearby stations
 - **Map movement tracking** - automatically fetches stops for new areas
 - **Modern UI** with dark theme and smooth animations
+- **Haptic feedback** on button clicks (with iOS support)
 - **Mobile-responsive** design
 - **Prague timezone** support
 - **Air conditioning indicators**
 - **Delay tracking** with color coding
+
+## 📖 Related Guides
+- [PWA Update & Versioning Guide](./PWA_UPDATE_GUIDE.md) — How standalone app updates work.
 
 ## 🚀 Quick Deployment
 

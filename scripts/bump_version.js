@@ -36,5 +36,18 @@ export const BUILD_DATE = "${new Date().toISOString()}";
 fs.writeFileSync(srcPath, srcContent);
 console.log(`Generated ${srcPath}`);
 
+// 3. Update public/service-worker.js (Service Worker Cache Version)
+const swPath = path.join(publicDir, 'service-worker.js');
+if (fs.existsSync(swPath)) {
+    let swContent = fs.readFileSync(swPath, 'utf8');
+    // Replace CACHE_NAME and FONTS_CACHE versions
+    swContent = swContent.replace(/const CACHE_NAME = 'busgo-pwa-v\d+';/, `const CACHE_NAME = 'busgo-pwa-v${version}';`);
+    swContent = swContent.replace(/const FONTS_CACHE = 'busgo-fonts-v\d+';/, `const FONTS_CACHE = 'busgo-fonts-v${version}';`);
+    fs.writeFileSync(swPath, swContent);
+    console.log(`Updated cache versions in ${swPath}`);
+} else {
+    console.warn(`Service worker not found at ${swPath}`);
+}
+
 console.log(`\nVersion bumped to: ${version}`);
 console.log('Ensure you deploy both the new build and the public/version.json file.');

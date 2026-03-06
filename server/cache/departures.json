@@ -15042,5 +15042,2383 @@
       ]
     },
     "timestamp": 1766349668669
+  },
+  "U744Z2P": {
+    "data": {
+      "departures": [
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T20:55:00+01:00",
+            "scheduled": "2026-03-06T20:55:00+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T20:55:00+01:00",
+            "scheduled": "2026-03-06T20:55:00+01:00",
+            "minutes": "7"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "16",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Ústřední dílny DP",
+            "id": "16_13095_251225",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T20:59:13+01:00",
+            "scheduled": "2026-03-06T20:59:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 13
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T20:59:13+01:00",
+            "scheduled": "2026-03-06T20:59:00+01:00",
+            "minutes": "11"
+          },
+          "last_stop": {
+            "id": "U559Z1P",
+            "name": "Pod Jezerkou"
+          },
+          "route": {
+            "short_name": "11",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Spojovací",
+            "id": "11_12369_260228",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:02:09+01:00",
+            "scheduled": "2026-03-06T21:02:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 9
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:02:09+01:00",
+            "scheduled": "2026-03-06T21:02:00+01:00",
+            "minutes": "14"
+          },
+          "last_stop": {
+            "id": "U25Z1P",
+            "name": "Bertramka"
+          },
+          "route": {
+            "short_name": "10",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Hercovka",
+            "id": "10_14321_260302",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:10:09+01:00",
+            "scheduled": "2026-03-06T21:10:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 9
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:10:09+01:00",
+            "scheduled": "2026-03-06T21:10:00+01:00",
+            "minutes": "22"
+          },
+          "last_stop": {
+            "id": "U567Z1P",
+            "name": "Hotel Golf"
+          },
+          "route": {
+            "short_name": "16",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Ústřední dílny DP",
+            "id": "16_13110_250907",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:17:13+01:00",
+            "scheduled": "2026-03-06T21:17:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 13
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:17:13+01:00",
+            "scheduled": "2026-03-06T21:17:00+01:00",
+            "minutes": "29"
+          },
+          "last_stop": {
+            "id": "U47Z1P",
+            "name": "Blatiny"
+          },
+          "route": {
+            "short_name": "10",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Hercovka",
+            "id": "10_14327_260302",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:19:00+01:00",
+            "scheduled": "2026-03-06T21:19:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:19:00+01:00",
+            "scheduled": "2026-03-06T21:19:00+01:00",
+            "minutes": "31"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "11",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Spojovací",
+            "id": "11_12382_260228",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": true,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:25:00+01:00",
+            "scheduled": "2026-03-06T21:25:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:25:00+01:00",
+            "scheduled": "2026-03-06T21:25:00+01:00",
+            "minutes": "37"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "16",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Ústřední dílny DP",
+            "id": "16_14437_260302",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:33:00+01:00",
+            "scheduled": "2026-03-06T21:33:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:33:00+01:00",
+            "scheduled": "2026-03-06T21:33:00+01:00",
+            "minutes": "45"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "10",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Hercovka",
+            "id": "10_14335_260302",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": true,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:39:00+01:00",
+            "scheduled": "2026-03-06T21:39:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:39:00+01:00",
+            "scheduled": "2026-03-06T21:39:00+01:00",
+            "minutes": "51"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "11",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Spojovací",
+            "id": "11_11132_251220",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": true,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:41:00+01:00",
+            "scheduled": "2026-03-06T21:41:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:41:00+01:00",
+            "scheduled": "2026-03-06T21:41:00+01:00",
+            "minutes": "53"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "16",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Ústřední dílny DP",
+            "id": "16_14446_250901",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": true,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:44:00+01:00",
+            "scheduled": "2026-03-06T21:44:00+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:44:00+01:00",
+            "scheduled": "2026-03-06T21:44:00+01:00",
+            "minutes": "56"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "31",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Spojovací",
+            "id": "31_4284_260302",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:50:00+01:00",
+            "scheduled": "2026-03-06T21:50:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:50:00+01:00",
+            "scheduled": "2026-03-06T21:50:00+01:00",
+            "minutes": "62"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "10",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Hercovka",
+            "id": "10_14343_260302",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:58:00+01:00",
+            "scheduled": "2026-03-06T21:58:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:58:00+01:00",
+            "scheduled": "2026-03-06T21:58:00+01:00",
+            "minutes": "70"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "11",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Spojovací",
+            "id": "11_11078_251216",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T22:00:00+01:00",
+            "scheduled": "2026-03-06T22:00:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T22:00:00+01:00",
+            "scheduled": "2026-03-06T22:00:00+01:00",
+            "minutes": "72"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "16",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Ústřední dílny DP",
+            "id": "16_14453_250901",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": true,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T22:10:00+01:00",
+            "scheduled": "2026-03-06T22:10:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T22:10:00+01:00",
+            "scheduled": "2026-03-06T22:10:00+01:00",
+            "minutes": "82"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "10",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Hercovka",
+            "id": "10_14351_260228",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": true,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T22:18:00+01:00",
+            "scheduled": "2026-03-06T22:18:00+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T22:18:00+01:00",
+            "scheduled": "2026-03-06T22:18:00+01:00",
+            "minutes": "90"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "11",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Spojovací",
+            "id": "11_11139_260228",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T22:20:00+01:00",
+            "scheduled": "2026-03-06T22:20:00+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T22:20:00+01:00",
+            "scheduled": "2026-03-06T22:20:00+01:00",
+            "minutes": "92"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "16",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Ústřední dílny DP",
+            "id": "16_14458_250901",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T22:30:00+01:00",
+            "scheduled": "2026-03-06T22:30:00+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T22:30:00+01:00",
+            "scheduled": "2026-03-06T22:30:00+01:00",
+            "minutes": "102"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "10",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Hercovka",
+            "id": "10_14358_260302",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T22:38:00+01:00",
+            "scheduled": "2026-03-06T22:38:00+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T22:38:00+01:00",
+            "scheduled": "2026-03-06T22:38:00+01:00",
+            "minutes": "110"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "11",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Spojovací",
+            "id": "11_11096_251216",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T23:13:00+01:00",
+            "scheduled": "2026-03-06T23:13:00+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T23:13:00+01:00",
+            "scheduled": "2026-03-06T23:13:00+01:00",
+            "minutes": "145"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "31",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z2P",
+            "platform_code": "B"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Spojovací",
+            "id": "31_3675_260302",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        }
+      ]
+    },
+    "timestamp": 1772826504121
+  },
+  "U744Z1P": {
+    "data": {
+      "departures": [
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T20:55:47+01:00",
+            "scheduled": "2026-03-06T20:54:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 1,
+            "seconds": 107
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T20:55:47+01:00",
+            "scheduled": "2026-03-06T20:54:00+01:00",
+            "minutes": "5"
+          },
+          "last_stop": {
+            "id": "U515Z1P",
+            "name": "Olšanské hřbitovy"
+          },
+          "route": {
+            "short_name": "10",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Sídliště Řepy",
+            "id": "10_14607_260302",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": true,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:01:00+01:00",
+            "scheduled": "2026-03-06T20:59:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 2,
+            "seconds": 120
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:01:00+01:00",
+            "scheduled": "2026-03-06T20:59:00+01:00",
+            "minutes": "11"
+          },
+          "last_stop": {
+            "id": "U469Z1P",
+            "name": "Nákladové nádraží Žižkov"
+          },
+          "route": {
+            "short_name": "11",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Spořilov",
+            "id": "11_12530_260302",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:01:17+01:00",
+            "scheduled": "2026-03-06T21:01:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 17
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:01:17+01:00",
+            "scheduled": "2026-03-06T21:01:00+01:00",
+            "minutes": "11"
+          },
+          "last_stop": {
+            "id": "U299Z1P",
+            "name": "Krematorium Strašnice"
+          },
+          "route": {
+            "short_name": "16",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Sídliště Řepy",
+            "id": "16_13180_251216",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": true,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:11:17+01:00",
+            "scheduled": "2026-03-06T21:09:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 2,
+            "seconds": 137
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:11:17+01:00",
+            "scheduled": "2026-03-06T21:09:00+01:00",
+            "minutes": "21"
+          },
+          "last_stop": {
+            "id": "U779Z1P",
+            "name": "U Kříže"
+          },
+          "route": {
+            "short_name": "10",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Sídliště Řepy",
+            "id": "10_14363_260228",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:13:00+01:00",
+            "scheduled": "2026-03-06T21:13:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:13:00+01:00",
+            "scheduled": "2026-03-06T21:13:00+01:00",
+            "minutes": "23"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "11",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Spořilov",
+            "id": "11_12465_260228",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:16:00+01:00",
+            "scheduled": "2026-03-06T21:16:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:16:00+01:00",
+            "scheduled": "2026-03-06T21:16:00+01:00",
+            "minutes": "26"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "16",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Sídliště Řepy",
+            "id": "16_13052_251220",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:25:24+01:00",
+            "scheduled": "2026-03-06T21:24:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 1,
+            "seconds": 84
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:25:24+01:00",
+            "scheduled": "2026-03-06T21:24:00+01:00",
+            "minutes": "35"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "10",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Sídliště Řepy",
+            "id": "10_14369_260228",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:28:00+01:00",
+            "scheduled": "2026-03-06T21:28:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:28:00+01:00",
+            "scheduled": "2026-03-06T21:28:00+01:00",
+            "minutes": "38"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "11",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Spořilov",
+            "id": "11_12447_260228",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:31:00+01:00",
+            "scheduled": "2026-03-06T21:31:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:31:00+01:00",
+            "scheduled": "2026-03-06T21:31:00+01:00",
+            "minutes": "41"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "16",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Sídliště Řepy",
+            "id": "16_13066_251216",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": true,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:39:48+01:00",
+            "scheduled": "2026-03-06T21:39:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 48
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:39:48+01:00",
+            "scheduled": "2026-03-06T21:39:00+01:00",
+            "minutes": "49"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "10",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Sídliště Řepy",
+            "id": "10_14376_260228",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:43:00+01:00",
+            "scheduled": "2026-03-06T21:43:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:43:00+01:00",
+            "scheduled": "2026-03-06T21:43:00+01:00",
+            "minutes": "53"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "11",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Spořilov",
+            "id": "11_9939_251216",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:46:00+01:00",
+            "scheduled": "2026-03-06T21:46:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:46:00+01:00",
+            "scheduled": "2026-03-06T21:46:00+01:00",
+            "minutes": "56"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "16",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Sídliště Řepy",
+            "id": "16_13080_251220",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:55:32+01:00",
+            "scheduled": "2026-03-06T21:54:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 1,
+            "seconds": 92
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:55:32+01:00",
+            "scheduled": "2026-03-06T21:54:00+01:00",
+            "minutes": "65"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "10",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Sídliště Řepy",
+            "id": "10_14383_260302",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T22:02:00+01:00",
+            "scheduled": "2026-03-06T22:02:00+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T22:02:00+01:00",
+            "scheduled": "2026-03-06T22:02:00+01:00",
+            "minutes": "72"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "16",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Sídliště Řepy",
+            "id": "16_13096_250907",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T22:03:00+01:00",
+            "scheduled": "2026-03-06T22:03:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T22:03:00+01:00",
+            "scheduled": "2026-03-06T22:03:00+01:00",
+            "minutes": "73"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "11",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Spořilov",
+            "id": "11_9959_251216",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T22:14:00+01:00",
+            "scheduled": "2026-03-06T22:14:00+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T22:14:00+01:00",
+            "scheduled": "2026-03-06T22:14:00+01:00",
+            "minutes": "84"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "10",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Sídliště Řepy",
+            "id": "10_14391_260228",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T22:22:00+01:00",
+            "scheduled": "2026-03-06T22:22:00+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T22:22:00+01:00",
+            "scheduled": "2026-03-06T22:22:00+01:00",
+            "minutes": "92"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "16",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Sídliště Řepy",
+            "id": "16_13111_250907",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T22:24:00+01:00",
+            "scheduled": "2026-03-06T22:24:00+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T22:24:00+01:00",
+            "scheduled": "2026-03-06T22:24:00+01:00",
+            "minutes": "94"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "11",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Spořilov",
+            "id": "11_9667_260302",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T22:31:00+01:00",
+            "scheduled": "2026-03-06T22:31:00+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T22:31:00+01:00",
+            "scheduled": "2026-03-06T22:31:00+01:00",
+            "minutes": "101"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "2",
+            "type": 0,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U744Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Nádraží Braník",
+            "id": "2_15534_260302",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        }
+      ]
+    },
+    "timestamp": 1772826634929
+  },
+  "U476Z101P": {
+    "data": {
+      "departures": [
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:08:18+01:00",
+            "scheduled": "2026-03-06T21:08:25+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": -7
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:08:38+01:00",
+            "scheduled": "2026-03-06T21:08:45+01:00",
+            "minutes": "5"
+          },
+          "last_stop": {
+            "id": "U360Z101P",
+            "name": "Malostranská"
+          },
+          "route": {
+            "short_name": "A",
+            "type": 1,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z101P",
+            "platform_code": "1"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Depo Hostivař",
+            "id": "991_11534_260202",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:15:43+01:00",
+            "scheduled": "2026-03-06T21:15:55+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": -12
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:16:03+01:00",
+            "scheduled": "2026-03-06T21:16:15+01:00",
+            "minutes": "13"
+          },
+          "last_stop": {
+            "id": "U462Z101P",
+            "name": "Nádraží Veleslavín"
+          },
+          "route": {
+            "short_name": "A",
+            "type": 1,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z101P",
+            "platform_code": "1"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Depo Hostivař",
+            "id": "991_11484_260202",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:23:25+01:00",
+            "scheduled": "2026-03-06T21:23:25+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:23:45+01:00",
+            "scheduled": "2026-03-06T21:23:45+01:00",
+            "minutes": "21"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "A",
+            "type": 1,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z101P",
+            "platform_code": "1"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Depo Hostivař",
+            "id": "991_11638_260202",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:30:55+01:00",
+            "scheduled": "2026-03-06T21:30:55+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:31:15+01:00",
+            "scheduled": "2026-03-06T21:31:15+01:00",
+            "minutes": "28"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "A",
+            "type": 1,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z101P",
+            "platform_code": "1"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Depo Hostivař",
+            "id": "991_11590_260202",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:38:25+01:00",
+            "scheduled": "2026-03-06T21:38:25+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:38:45+01:00",
+            "scheduled": "2026-03-06T21:38:45+01:00",
+            "minutes": "36"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "A",
+            "type": 1,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z101P",
+            "platform_code": "1"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Depo Hostivař",
+            "id": "991_11902_260202",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:45:55+01:00",
+            "scheduled": "2026-03-06T21:45:55+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:46:15+01:00",
+            "scheduled": "2026-03-06T21:46:15+01:00",
+            "minutes": "43"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "A",
+            "type": 1,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z101P",
+            "platform_code": "1"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Depo Hostivař",
+            "id": "991_11434_260202",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        }
+      ]
+    },
+    "timestamp": 1772827402449
+  },
+  "U476Z102P": {
+    "data": {
+      "departures": [
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T20:52:33+01:00",
+            "scheduled": "2026-03-06T20:52:30+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 3
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T20:52:50+01:00",
+            "scheduled": "2026-03-06T20:52:50+01:00",
+            "minutes": "1"
+          },
+          "last_stop": {
+            "id": "U209Z102P",
+            "name": "Jiřího z Poděbrad"
+          },
+          "route": {
+            "short_name": "A",
+            "type": 1,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z102P",
+            "platform_code": "2"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Nemocnice Motol",
+            "id": "991_11901_260202",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T20:59:55+01:00",
+            "scheduled": "2026-03-06T21:00:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": -5
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:00:15+01:00",
+            "scheduled": "2026-03-06T21:00:20+01:00",
+            "minutes": "8"
+          },
+          "last_stop": {
+            "id": "U953Z102P",
+            "name": "Skalka"
+          },
+          "route": {
+            "short_name": "A",
+            "type": 1,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z102P",
+            "platform_code": "2"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Nemocnice Motol",
+            "id": "991_11433_260202",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:07:30+01:00",
+            "scheduled": "2026-03-06T21:07:30+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:07:50+01:00",
+            "scheduled": "2026-03-06T21:07:50+01:00",
+            "minutes": "16"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "A",
+            "type": 1,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z102P",
+            "platform_code": "2"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Nemocnice Motol",
+            "id": "991_11744_260202",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:15:00+01:00",
+            "scheduled": "2026-03-06T21:15:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:15:20+01:00",
+            "scheduled": "2026-03-06T21:15:20+01:00",
+            "minutes": "23"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "A",
+            "type": 1,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z102P",
+            "platform_code": "2"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Nemocnice Motol",
+            "id": "991_11686_260202",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:22:30+01:00",
+            "scheduled": "2026-03-06T21:22:30+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:22:50+01:00",
+            "scheduled": "2026-03-06T21:22:50+01:00",
+            "minutes": "31"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "A",
+            "type": 1,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z102P",
+            "platform_code": "2"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Nemocnice Motol",
+            "id": "991_11704_260202",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:30:00+01:00",
+            "scheduled": "2026-03-06T21:30:00+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:30:20+01:00",
+            "scheduled": "2026-03-06T21:30:20+01:00",
+            "minutes": "38"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "A",
+            "type": 1,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z102P",
+            "platform_code": "2"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Nemocnice Motol",
+            "id": "991_11803_260202",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": false,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        }
+      ]
+    },
+    "timestamp": 1772826723504
+  },
+  "U476Z5P": {
+    "data": {
+      "departures": [
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:05:26+01:00",
+            "scheduled": "2026-03-06T21:03:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 2,
+            "seconds": 146
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:05:26+01:00",
+            "scheduled": "2026-03-06T21:03:00+01:00",
+            "minutes": "13"
+          },
+          "last_stop": {
+            "id": "U183Z4P",
+            "name": "Chodovská"
+          },
+          "route": {
+            "short_name": "135",
+            "type": 3,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z5P",
+            "platform_code": "E"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Florenc",
+            "id": "135_1252_250521",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:18:00+01:00",
+            "scheduled": "2026-03-06T21:18:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:18:00+01:00",
+            "scheduled": "2026-03-06T21:18:00+01:00",
+            "minutes": "25"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "135",
+            "type": 3,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z5P",
+            "platform_code": "E"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Florenc",
+            "id": "135_1144_250521",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:33:00+01:00",
+            "scheduled": "2026-03-06T21:33:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:33:00+01:00",
+            "scheduled": "2026-03-06T21:33:00+01:00",
+            "minutes": "40"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "135",
+            "type": 3,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z5P",
+            "platform_code": "E"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Florenc",
+            "id": "135_1153_250521",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T21:48:00+01:00",
+            "scheduled": "2026-03-06T21:48:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T21:48:00+01:00",
+            "scheduled": "2026-03-06T21:48:00+01:00",
+            "minutes": "55"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "135",
+            "type": 3,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z5P",
+            "platform_code": "E"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Florenc",
+            "id": "135_1192_250521",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": true,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T22:08:00+01:00",
+            "scheduled": "2026-03-06T22:08:00+01:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T22:08:00+01:00",
+            "scheduled": "2026-03-06T22:08:00+01:00",
+            "minutes": "75"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "135",
+            "type": 3,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z5P",
+            "platform_code": "E"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Florenc",
+            "id": "135_1247_250521",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-03-06T22:28:00+01:00",
+            "scheduled": "2026-03-06T22:28:00+01:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-03-06T22:28:00+01:00",
+            "scheduled": "2026-03-06T22:28:00+01:00",
+            "minutes": "95"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "135",
+            "type": 3,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U476Z5P",
+            "platform_code": "E"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Florenc",
+            "id": "135_1200_250521",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        }
+      ]
+    },
+    "timestamp": 1772826755649
+  },
+  "U2962Z1P": {
+    "data": {
+      "departures": []
+    },
+    "timestamp": 1772827112590
   }
 }
