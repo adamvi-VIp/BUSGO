@@ -142,6 +142,7 @@ const Arrival = React.forwardRef(({ arrival, onDepartureClick, isActive }, ref) 
                 scale: { duration: 0.2 }
             }}
             onClick={() => onDepartureClick && onDepartureClick(arrival)}
+            data-haptic
             className={`flex justify-between items-center p-3 mb-2 rounded-lg border-b border-gray-800 overflow-x-hidden -ml-1 cursor-pointer hover:bg-white/5 active:bg-white/10 ${isActive ? 'bg-cyan-500/20 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)] ring-1 ring-cyan-500/30' : ''}`}
         >
             <div className="flex items-center gap-4 mb-1 min-w-0 flex-grow">

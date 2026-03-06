@@ -17,7 +17,8 @@
     "maplibre-gl": "^5.9.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "socket.io-client": "^4.7.4"
+    "socket.io-client": "^4.7.4",
+    "web-haptics": "^0.0.6"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",

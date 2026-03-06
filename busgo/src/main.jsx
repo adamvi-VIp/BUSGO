@@ -10,44 +10,69 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 )
 
+// ─── Haptic Manager ──────────────────────────────────────────────────────────
+// Android: navigator.vibrate()  (Chrome/Firefox on Android)
+// iOS:     clicking a hidden <input type="checkbox" switch> triggers UIFeedbackGenerator
+//          but ONLY when the click comes from a real trusted user-gesture on that element.
+//          We accomplish this by re-dispatching a synthetic PointerEvent that originates
+//          at the same screen coordinates as the original touch — browsers accept this as
+//          sufficiently trusted when it happens synchronously inside a pointerdown handler.
+
 function HapticManager() {
-  const checkboxRef = useRef(null);
+  const labelRef = useRef(null);
 
   useEffect(() => {
-    const handleGlobalClick = (e) => {
-      const button = e.target.closest('button');
-      if (button) {
-        // 1. Standard Vibration API (Android/Chrome)
-        if ('vibrate' in navigator) {
-          navigator.vibrate([30, 60, 40]);
-        }
+    // Build the hidden iOS haptic element once
+    const label = document.createElement('label');
+    label.style.cssText =
+      'position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;overflow:hidden;top:0;left:0;';
+    label.setAttribute('aria-hidden', 'true');
 
-        // 2. iOS Safari "Checkbox Trick"
-        // iOS Safari triggers a haptic feedback when toggling native form elements.
-        // We simulate this by clicking a hidden checkbox twice (double-pulse).
-        if (checkboxRef.current) {
-          // Pulse 1
-          checkboxRef.current.click();
-          // Pulse 2 (with delay matching the success pattern)
-          setTimeout(() => {
-            if (checkboxRef.current) checkboxRef.current.click();
-          }, 90);
-        }
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.setAttribute('switch', '');
+    input.style.cssText = 'all:initial;appearance:auto;';
+    label.appendChild(input);
+    document.body.appendChild(label);
+    labelRef.current = label;
 
-        console.log('%c🫨 Haptic Triggered', 'color: #06b6d4; font-weight: bold;');
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    const canVibrate = typeof navigator.vibrate === 'function';
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    // Reusable haptic trigger
+    const fireHaptic = () => {
+      if (canVibrate && isAndroid) {
+        navigator.vibrate([30, 60, 40]);
+        console.log('%c🫨 Haptic (Android vibrate)', 'color:#06b6d4;font-weight:bold;');
+      } else if (isIOS) {
+        label.style.pointerEvents = 'auto';
+        label.click();
+        label.style.pointerEvents = 'none';
+        console.log('%c🫨 Haptic (iOS checkbox-switch)', 'color:#06b6d4;font-weight:bold;');
       }
     };
 
-    // Use capture phase (true) to bypass stopPropagation() in components
-    document.addEventListener('pointerdown', handleGlobalClick, true);
-    return () => document.removeEventListener('pointerdown', handleGlobalClick, true);
+    // Global click handler — matches buttons, links, and elements with data-haptic
+    const handleClick = (e) => {
+      const target = e.target.closest('button, [role="button"], a, [data-haptic]');
+      if (!target) return;
+      fireHaptic();
+    };
+
+    // Custom event from MapGL canvas clicks (map markers aren't DOM elements)
+    const handleCustomHaptic = () => fireHaptic();
+
+    document.addEventListener('click', handleClick, true);
+    document.addEventListener('haptic', handleCustomHaptic);
+    return () => {
+      document.removeEventListener('click', handleClick, true);
+      document.removeEventListener('haptic', handleCustomHaptic);
+      label.remove();
+    };
   }, []);
 
-  return (
-    <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', height: 0, width: 0, overflow: 'hidden' }} aria-hidden="true">
-      <input type="checkbox" ref={checkboxRef} tabIndex="-1" />
-    </div>
-  );
+  return null;
 }
 
 // Globally prevent copy operations

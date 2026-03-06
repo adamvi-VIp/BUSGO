@@ -518,7 +518,17 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
           console.log('[MapGL] Stop found:', stop.name);
         }
 
-        if (stop && typeof onStopSelect === 'function') onStopSelect(stop);
+        if (stop && typeof onStopSelect === 'function') {
+          // Only trigger haptic if this is a NEW selection
+          const isAlreadySelected = selectedStop && (
+            (stop.uniqueStopPointId && String(selectedStop.uniqueStopPointId) === String(stop.uniqueStopPointId)) ||
+            (stop.gtfsId && String(selectedStop.gtfsId) === String(stop.gtfsId))
+          );
+          if (!isAlreadySelected) {
+            document.dispatchEvent(new Event('haptic'));
+          }
+          onStopSelect(stop);
+        }
       };
       busClickHandlerRef.current = handler;
       try { map.on('click', 'bus-stops', busClickHandlerRef.current); } catch { }
@@ -541,7 +551,7 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
     }
 
     return () => detach();
-  }, [stops, onStopSelect]);
+  }, [stops, onStopSelect, selectedStop]);
 
   // Update route line geometry
   useEffect(() => {

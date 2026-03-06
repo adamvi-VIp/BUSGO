@@ -7,11 +7,11 @@ const StopItem = React.forwardRef(({ stop, handleStopSelect, isSelected }, ref) 
         <div
             ref={isSelected ? ref : null}
             onClick={() => !isSelected && handleStopSelect()}
-            className={`w-full p-3 pr-4 flex items-center gap-4 border-b border-gray-700/60 transition-all duration-200 ${
-                isSelected 
-                    ? 'bg-cyan-500/20 border-l-4 border-l-cyan-400 cursor-default' 
-                    : 'bg-transparent active:bg-cyan-500/10 cursor-pointer'
-            }`}
+            data-haptic={!isSelected ? '' : undefined}
+            className={`w-full p-3 pr-4 flex items-center gap-4 border-b border-gray-700/60 transition-all duration-200 ${isSelected
+                ? 'bg-cyan-500/20 border-l-4 border-l-cyan-400 cursor-default'
+                : 'bg-transparent active:bg-cyan-500/10 cursor-pointer'
+                }`}
         >
             <div className="flex-grow min-w-0">
                 <h2 className="text-base font-semibold text-white break-all whitespace-normal">
@@ -22,13 +22,13 @@ const StopItem = React.forwardRef(({ stop, handleStopSelect, isSelected }, ref) 
                 </div>
             </div>
             <div className="flex-shrink-0 flex flex-wrap-reverse justify-end gap-1.5 max-w-[50%]">
-                 {lines?.slice(0, 4).map((line, index) => (
+                {lines?.slice(0, 4).map((line, index) => (
                     <span key={`${line.name}-${index}`} className="font-medium text-white bg-gray-600/60 px-2 py-0.5 rounded text-xs shadow-sm">
-                       {line.name}
+                        {line.name}
                     </span>
                 ))}
                 {lines?.length > 4 && (
-                   <span className="font-medium text-gray-400 bg-gray-700/70 px-2 py-0.5 rounded text-xs shadow-sm">
+                    <span className="font-medium text-gray-400 bg-gray-700/70 px-2 py-0.5 rounded text-xs shadow-sm">
                         +{lines.length - 4}
                     </span>
                 )}
