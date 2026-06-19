@@ -31,8 +31,9 @@ const SplashScreen = ({ progress, isStandalone }) => {
   }, [progress]);
 
   return (
-    <div id="splash-screen"
-      className={`fixed inset-0 bg-black z-[9999] flex items-center justify-center transition-opacity duration-500 flex-col ${isStandalone ? 'pb-8' : ''}`}
+    <div
+      id="splash-screen"
+      className="fixed inset-0 bg-black z-[9999] flex items-center justify-center transition-opacity duration-500 flex-col"
     >
       <div
         style={{

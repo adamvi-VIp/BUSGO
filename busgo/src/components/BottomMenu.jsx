@@ -80,12 +80,12 @@ const BottomMenu = ({
 
     // Interpolated styles
     const MARGIN_MAX = 10; // 0.5rem (left-2)
-    const BOTTOM_MARGIN_MAX = 10; // 0.5rem (same as sides)
+    const BOTTOM_MARGIN_MAX = 0;
     const RADIUS_MAX = 40; // Increased from 24 (rounded-3xl) to 40 for "more rounded"
 
     const sideMargin = progress * MARGIN_MAX;
     const bottomGap = progress * BOTTOM_MARGIN_MAX;
-    const bottomRadius = progress * RADIUS_MAX;
+    const bottomRadius = 0;
     const topRadius = RADIUS_MAX;
 
     // Calculate height dynamically

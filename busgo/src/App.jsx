@@ -332,7 +332,13 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
 
     return (
         <>
-            <div className="fixed top-2 left-1/2 transform -translate-x-1/2 z-[60] w-full max-w-3xl mx-auto px-2 sm:px-4" style={{ pointerEvents: 'auto' }}>
+            <div
+                className="fixed left-1/2 transform -translate-x-1/2 z-[90] w-full max-w-3xl mx-auto px-2 sm:px-4"
+                style={{
+                    pointerEvents: 'auto',
+                    top: 'calc(env(safe-area-inset-top, 0px) + 0.5rem)',
+                }}
+            >
                 <motion.div
                     layout
                     transition={{
@@ -340,7 +346,7 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
                     }}
                     className="bg-background-secondary rounded-2xl shadow-2xl border border-gray-700/50 animate-slide-up overflow-hidden"
                     style={{
-                        maxHeight: 'calc(100vh - 160px)', // 220px bottom menu + 40px gap
+                        maxHeight: 'calc((var(--vh, 1vh) * 100) - env(safe-area-inset-top, 0px) - 160px)',
                         marginLeft: 'auto',
                         marginRight: 'auto',
                         display: 'flex',
@@ -372,7 +378,7 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
                     </motion.header>
 
                     {/* Only this div scrolls */}
-                    <div className={`${activeTripId ? 'overflow-y-hidden' : 'overflow-y-auto'} p-4 flex-1`} style={{ maxHeight: 'calc(100vh - 340px)' }}>
+                    <div className={`${activeTripId ? 'overflow-y-hidden' : 'overflow-y-auto'} p-4 flex-1`} style={{ maxHeight: 'calc((var(--vh, 1vh) * 100) - env(safe-area-inset-top, 0px) - 340px)' }}>
                         {error && <div className="text-center text-red-400 p-4 bg-red-500/10 rounded-xl text-sm">{error.error}</div>}
                         {realTimeData && (
                             processedDepartures.length > 0 ? (
@@ -1365,7 +1371,7 @@ function App() {
 
     return (
         <div
-            className={`relative${isStandalone ? ' pb-8' : ''}`}
+            className="relative"
             style={{
                 position: 'fixed',
                 top: 0,
@@ -1380,6 +1386,14 @@ function App() {
                 backgroundColor: '#0a0a0a', // Add the dark background color
             }}
         >
+            <div
+                aria-hidden="true"
+                className="pointer-events-none fixed top-0 left-0 right-0 z-[80]"
+                style={{
+                    height: 'calc(env(safe-area-inset-top, 0px) + 72px)',
+                    background: 'linear-gradient(to bottom, rgba(0,0,0,0.9), rgba(0,0,0,0.55) 48%, rgba(0,0,0,0))',
+                }}
+            />
             <StandByMode activeTripId={activeTripId} realTimeData={realTimeData} />
             <MapGL
                 stops={mapStops}

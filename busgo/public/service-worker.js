@@ -1,5 +1,5 @@
-const CACHE_NAME = 'busgo-pwa-v1772830550846';
-const FONTS_CACHE = 'busgo-fonts-v1772830550846';
+const CACHE_NAME = 'busgo-pwa-v1781891165030';
+const FONTS_CACHE = 'busgo-fonts-v1781891165030';
 const IS_DEV = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1';
 
 // Precache core assets + requested resources
