@@ -99,6 +99,7 @@ const BottomMenu = ({
     // If we switch to top-0 logic for calculation it is easier.
     // Let's assume layout is full screen absolute.
     const dynamicHeight = windowHeight - bottomGap - translateY;
+    const safeAreaBottom = 'env(safe-area-inset-bottom, 0px)';
 
     const handleTouchStart = (e) => {
         const target = e.target;
@@ -340,10 +341,10 @@ const BottomMenu = ({
             ref={menuRef}
             className="absolute z-[70] touch-none"
             style={{
-                bottom: `${bottomGap}px`,
+                bottom: `calc(${bottomGap}px - ${safeAreaBottom})`,
                 left: `${sideMargin}px`,
                 right: `${sideMargin}px`,
-                height: `${dynamicHeight}px`,
+                height: `calc(${dynamicHeight}px + ${safeAreaBottom})`,
                 transition: isDragging ? 'none' : 'height 500ms cubic-bezier(0.23, 1, 0.32, 1), bottom 500ms cubic-bezier(0.23, 1, 0.32, 1), left 500ms cubic-bezier(0.23, 1, 0.32, 1), right 500ms cubic-bezier(0.23, 1, 0.32, 1)',
                 willChange: 'height, bottom, left, right',
                 backfaceVisibility: 'hidden',
@@ -359,6 +360,7 @@ const BottomMenu = ({
                     borderTopRightRadius: `${topRadius}px`,
                     borderBottomLeftRadius: `${bottomRadius}px`,
                     borderBottomRightRadius: `${bottomRadius}px`,
+                    paddingBottom: safeAreaBottom,
                 }}
             >
                 <div className="p-3 px-5 text-center text-gray-300 border-b border-gray-700/60 menu-header cursor-grab active:cursor-grabbing shrink-0">

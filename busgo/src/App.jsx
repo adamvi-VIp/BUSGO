@@ -1377,7 +1377,7 @@ function App() {
                 top: 0,
                 left: 0,
                 width: '100vw',
-                height: 'calc(var(--vh, 1vh) * 100)',
+                height: 'calc((var(--vh, 1vh) * 100) + env(safe-area-inset-bottom, 0px))',
                 overflow: 'hidden',
                 WebkitOverflowScrolling: 'touch',
                 // Prevent iOS rubber banding
