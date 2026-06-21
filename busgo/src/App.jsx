@@ -1388,7 +1388,7 @@ function App() {
         >
             <div
                 aria-hidden="true"
-                className="pointer-events-none fixed top-0 left-0 right-0 z-[80]"
+                className="pointer-events-none fixed top-0 left-0 right-0 z-10"
                 style={{
                     height: 'calc(env(safe-area-inset-top, 0px) + 72px)',
                     background: 'linear-gradient(to bottom, rgba(0,0,0,0.9), rgba(0,0,0,0.55) 48%, rgba(0,0,0,0))',
