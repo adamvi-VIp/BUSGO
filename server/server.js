@@ -9,9 +9,11 @@ import { fileURLToPath } from 'url';
 
 // --- Configuration & Constants ---
 const DEBUG_LOGS = false;
-const CACHE_DIR = './server/cache';
+const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
+const CACHE_DIR = path.join(SERVER_DIR, 'cache');
 const STATIONS_FILE = path.join(CACHE_DIR, 'stations.json');
 const DEPARTURES_CACHE_FILE = path.join(CACHE_DIR, 'departures.json');
+const LINES_FILE = path.join(CACHE_DIR, 'lines.json');
 
 const STOPS_JSON_URL = 'https://data.pid.cz/stops/json/stops.json';
 const GOLEMIO_API_BASE = 'https://api.golemio.cz/v2';
@@ -19,16 +21,21 @@ const GOLEMIO_DEPARTURES_URL = `${GOLEMIO_API_BASE}/pid/departureboards`;
 const GOLEMIO_GTFS_TRIPS_URL = `${GOLEMIO_API_BASE}/gtfs/trips`;
 const GOLEMIO_GTFS_SHAPES_URL = `${GOLEMIO_API_BASE}/gtfs/shapes`;
 const GOLEMIO_GTFS_STOPS_URL = `${GOLEMIO_API_BASE}/gtfs/stops`;
+const GOLEMIO_VEHICLE_POSITIONS_URL = `${GOLEMIO_API_BASE}/vehiclepositions`;
 
 const POLLING_INTERVAL = 10000; // 10 seconds
 const DEPARTURE_CACHE_MAX_AGE_MS = 8000; // 8 seconds
 const TRIP_PATH_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const VEHICLE_POSITIONS_CACHE_MAX_AGE_MS = 3000; // 3 seconds
 
 // --- State Variables ---
 let processedStopsCache = [];
 let tempDepartureCache = {}; // In-memory mirror of departures.json
 const tripPathCache = new Map(); // key: tripId, value: { timestamp, data }
 const shapeCache = new Map(); // key: shapeId, value: { timestamp, data }
+let lineFeaturesCache = null;
+let metroLinesCache = null;
+let vehiclePositionsCache = { timestamp: 0, data: null };
 
 // Real-time polling state
 const activeTimers = new Map(); // key: stopId
@@ -433,10 +440,15 @@ function setFreshCache(cache, key, data) {
     return data;
 }
 
+function normalizeHexColor(color) {
+    return color ? `#${String(color).replace(/^#/, '')}` : null;
+}
+
 function findCachedStop(stopId) {
     const normalized = String(stopId);
     return processedStopsCache.find(stop =>
         String(stop.gtfsId) === normalized ||
+        String(stop.uniqueStopPointId) === normalized ||
         (Array.isArray(stop.gtfsIds) && stop.gtfsIds.map(String).includes(normalized))
     );
 }
@@ -446,9 +458,9 @@ function toFiniteNumber(value) {
     return Number.isFinite(number) ? number : null;
 }
 
-export function shapeFeaturesToLineString(shapeData) {
+export function shapeFeaturesToPath(shapeData) {
     const features = Array.isArray(shapeData?.features) ? shapeData.features : [];
-    const coordinates = features
+    const points = features
         .map(feature => {
             const coords = feature?.geometry?.coordinates || [];
             const lon = toFiniteNumber(coords[0]);
@@ -456,14 +468,21 @@ export function shapeFeaturesToLineString(shapeData) {
             if (lon === null || lat === null) return null;
             return {
                 sequence: toFiniteNumber(feature?.properties?.shape_pt_sequence) ?? 0,
-                coordinates: [lon, lat]
+                coordinates: [lon, lat],
+                distance: toFiniteNumber(feature?.properties?.shape_dist_traveled)
             };
         })
         .filter(Boolean)
-        .sort((a, b) => a.sequence - b.sequence)
-        .map(point => point.coordinates);
+        .sort((a, b) => a.sequence - b.sequence);
 
-    return { type: 'LineString', coordinates };
+    return {
+        geometry: { type: 'LineString', coordinates: points.map(point => point.coordinates) },
+        shapeDistances: points.map(point => point.distance)
+    };
+}
+
+export function shapeFeaturesToLineString(shapeData) {
+    return shapeFeaturesToPath(shapeData).geometry;
 }
 
 async function fetchShapeGeometry(shapeId) {
@@ -476,11 +495,53 @@ async function fetchShapeGeometry(shapeId) {
         timeout: 8000
     });
 
-    const geometry = shapeFeaturesToLineString(response.data);
-    if (geometry.coordinates.length === 0) {
+    const path = shapeFeaturesToPath(response.data);
+    if (path.geometry.coordinates.length === 0) {
         throw new Error(`No shape geometry found for ${shapeId}`);
     }
-    return setFreshCache(shapeCache, shapeId, geometry);
+    return setFreshCache(shapeCache, shapeId, path);
+}
+
+async function loadLineFeatures() {
+    if (lineFeaturesCache) return lineFeaturesCache;
+    try {
+        const raw = await fs.readFile(LINES_FILE, 'utf8');
+        const data = JSON.parse(raw);
+        lineFeaturesCache = Array.isArray(data?.features) ? data.features : [];
+    } catch (error) {
+        console.error(`[CACHE] Failed to load lines.json: ${error.message}`);
+        lineFeaturesCache = [];
+    }
+    return lineFeaturesCache;
+}
+
+async function findRouteMeta(routeId) {
+    const features = await loadLineFeatures();
+    const route = features.find(feature => String(feature?.properties?.route_id || '') === String(routeId || ''));
+    return {
+        routeColor: normalizeHexColor(route?.properties?.route_color),
+        routeShortName: route?.properties?.route_short_name || null
+    };
+}
+
+async function getMetroLines() {
+    if (metroLinesCache) return metroLinesCache;
+    const features = await loadLineFeatures();
+    metroLinesCache = {
+        type: 'FeatureCollection',
+        features: features
+            .filter(feature => String(feature?.properties?.route_type) === '1')
+            .map(feature => ({
+                type: 'Feature',
+                geometry: feature.geometry,
+                properties: {
+                    route_id: feature.properties.route_id,
+                    route_short_name: feature.properties.route_short_name,
+                    route_color: normalizeHexColor(feature.properties.route_color)
+                }
+            }))
+    };
+    return metroLinesCache;
 }
 
 async function fetchStopFeatures(stopIds) {
@@ -504,6 +565,15 @@ async function fetchStopFeatures(stopIds) {
     }
 }
 
+export function collectFulfilledDepartures(results) {
+    return results.reduce((acc, result) => {
+        if (result.status === 'fulfilled' && Array.isArray(result.value?.departures)) {
+            acc.push(...result.value.departures);
+        }
+        return acc;
+    }, []);
+}
+
 function buildTripStop(stopTime, apiStopFeatures) {
     const stopId = stopTime?.stop_id ? String(stopTime.stop_id) : null;
     if (!stopId) return null;
@@ -519,12 +589,18 @@ function buildTripStop(stopTime, apiStopFeatures) {
 
     return {
         stop_id: stopId,
+        uniqueStopPointId: cachedStop?.uniqueStopPointId || stopId,
+        gtfsId: cachedStop?.gtfsId || stopId,
+        gtfsIds: Array.isArray(cachedStop?.gtfsIds) && cachedStop.gtfsIds.length ? cachedStop.gtfsIds : [stopId],
         stop_name: cachedStop?.name || apiProps.stop_name || stopTime.stop_name || stopId,
         arrival_time: stopTime.arrival_time,
         departure_time: stopTime.departure_time,
         stop_sequence: toFiniteNumber(stopTime.stop_sequence) ?? 0,
         lat,
         lon,
+        platform: cachedStop?.platform || apiProps.platform_code || null,
+        zone: cachedStop?.zone || apiProps.zone_id || null,
+        lines: Array.isArray(cachedStop?.lines) ? cachedStop.lines : [],
         mainTrafficType: cachedStop?.mainTrafficType || null,
         is_night: cachedStop?.is_night || false
     };
@@ -561,15 +637,71 @@ export async function fetchTripPath(tripId) {
 
     if (stops.length === 0) throw new Error(`No resolvable stops found for trip ${normalizedTripId}`);
 
+    const shapePath = await fetchShapeGeometry(trip.shape_id);
+    const routeMeta = await findRouteMeta(trip.route_id);
     const data = {
         tripId: trip.trip_id || normalizedTripId,
         routeId: trip.route_id || null,
+        routeColor: routeMeta.routeColor,
+        routeShortName: routeMeta.routeShortName,
         shapeId: trip.shape_id,
         stops,
-        geometry: await fetchShapeGeometry(trip.shape_id),
+        geometry: shapePath.geometry,
+        shapeDistances: shapePath.shapeDistances,
         source: 'golemio-gtfs'
     };
     return setFreshCache(tripPathCache, normalizedTripId, data);
+}
+
+function resolveTripIdContext(tripData) {
+    if (typeof tripData === 'object' && tripData !== null) {
+        const tripId = tripData.gtfs_trip_id || tripData.id;
+        return {
+            tripId,
+            clientTripId: tripData.id || tripId
+        };
+    }
+    return { tripId: tripData, clientTripId: tripData };
+}
+
+async function fetchVehiclePositions() {
+    if (Date.now() - vehiclePositionsCache.timestamp < VEHICLE_POSITIONS_CACHE_MAX_AGE_MS && vehiclePositionsCache.data) {
+        return vehiclePositionsCache.data;
+    }
+
+    const response = await axios.get(`${GOLEMIO_VEHICLE_POSITIONS_URL}?limit=5000`, {
+        headers: getGolemioHeaders(),
+        timeout: 6000
+    });
+
+    const features = Array.isArray(response.data?.features) ? response.data.features : [];
+    vehiclePositionsCache = { timestamp: Date.now(), data: features };
+    return features;
+}
+
+async function fetchTripVehiclePosition(tripId) {
+    if (!tripId) return null;
+    const features = await fetchVehiclePositions();
+    const feature = features.find(item => String(item?.properties?.trip?.gtfs?.trip_id || '') === String(tripId));
+    if (!feature) return null;
+
+    const coordinates = feature?.geometry?.coordinates || [];
+    const lon = toFiniteNumber(coordinates[0]);
+    const lat = toFiniteNumber(coordinates[1]);
+    if (lon === null || lat === null) return null;
+
+    const lastPosition = feature.properties?.last_position || {};
+    return {
+        coordinates: [lon, lat],
+        bearing: toFiniteNumber(lastPosition.bearing),
+        shapeDistTraveled: toFiniteNumber(lastPosition.shape_dist_traveled),
+        lastStopId: lastPosition.last_stop?.id || null,
+        lastStopSequence: toFiniteNumber(lastPosition.last_stop?.sequence),
+        nextStopId: lastPosition.next_stop?.id || null,
+        nextStopSequence: toFiniteNumber(lastPosition.next_stop?.sequence),
+        originTimestamp: lastPosition.origin_timestamp || null,
+        tracking: lastPosition.tracking === true
+    };
 }
 
 // --- Socket Logic ---
@@ -641,11 +773,11 @@ io.on('connection', (socket) => {
             if (cached && (now - cached.timestamp < DEPARTURE_CACHE_MAX_AGE_MS)) {
                 // Allow 8s freshness
                 console.log(`[SOCKET] Serving fresh cache for ${stopId}`);
-                socket.emit('departureData', cached.data);
+                socket.emit('departureData', { ...cached.data, stopId });
             } else if (cached) {
                 // Serve stale cache while loading
                 console.log(`[SOCKET] Serving stale cache for ${stopId} while refreshing`);
-                socket.emit('departureData', cached.data);
+                socket.emit('departureData', { ...cached.data, stopId });
             } else {
                 console.log(`[SOCKET] No cache for ${stopId}, waiting for poll...`);
             }
@@ -679,35 +811,37 @@ io.on('connection', (socket) => {
 
 
     socket.on('getTripPath', async (tripData) => {
+        const { tripId, clientTripId } = resolveTripIdContext(tripData);
         try {
-            let tripId = tripData;
-
-            // Support receiving full trip object to find correct GTFS ID
-            if (typeof tripData === 'object' && tripData !== null) {
-                if (DEBUG_LOGS) console.log(`[DEBUG] Trip Object Keys: ${Object.keys(tripData).join(', ')}`);
-
-                // Try to find a GTFS-specific ID field
-                if (tripData.gtfs_trip_id) {
-                    tripId = tripData.gtfs_trip_id;
-                    if (DEBUG_LOGS) console.log(`[API] Using GTFS Trip ID: ${tripId} (instead of ${tripData.id})`);
-                } else if (tripData.start_timestamp) {
-                    tripId = tripData.id;
-                } else {
-                    tripId = tripData.id;
-                }
-            }
+            if (typeof tripData === 'object' && tripData !== null && DEBUG_LOGS) console.log(`[DEBUG] Trip Object Keys: ${Object.keys(tripData).join(', ')}`);
 
             if (!tripId) return;
 
-            // Return correct ID context for client
-            const clientTripId = (typeof tripData === 'object' && tripData.id) ? tripData.id : tripId;
             const path = await fetchTripPath(tripId);
 
             socket.emit('tripPathData', { ...path, tripId: clientTripId });
         } catch (err) {
             console.error('[SOCKET] Error in getTripPath:', err);
-            const clientTripId = (typeof tripData === 'object' && tripData.id) ? tripData.id : 'unknown';
-            socket.emit('tripPathError', { tripId: clientTripId, error: err.message || 'Internal server error fetching trip path.' });
+            socket.emit('tripPathError', { tripId: clientTripId || 'unknown', error: err.message || 'Internal server error fetching trip path.' });
+        }
+    });
+
+    socket.on('getTripVehiclePosition', async (tripData) => {
+        const { tripId, clientTripId } = resolveTripIdContext(tripData);
+        try {
+            const position = await fetchTripVehiclePosition(tripId);
+            socket.emit('tripVehiclePositionData', { tripId: clientTripId, position });
+        } catch (err) {
+            console.error('[SOCKET] Error in getTripVehiclePosition:', err);
+            socket.emit('tripVehiclePositionError', { tripId: clientTripId, error: err.message || 'Internal server error fetching vehicle position.' });
+        }
+    });
+
+    socket.on('getMetroLines', async () => {
+        try {
+            socket.emit('metroLinesData', await getMetroLines());
+        } catch (err) {
+            console.error('[SOCKET] Error in getMetroLines:', err);
         }
     });
 });
@@ -723,7 +857,7 @@ function stopPolling(stopId) {
 
 function startPolling(stopId) {
     // Identity resolution
-    const stopEntry = processedStopsCache.find(stop => stop.gtfsId === stopId);
+    const stopEntry = findCachedStop(stopId);
     const gtfsIds = stopEntry?.gtfsIds || [stopId];
 
     const fetchData = async () => {
@@ -734,11 +868,16 @@ function startPolling(stopId) {
         }
 
         try {
-            const allDepartures = await Promise.all(gtfsIds.map(id => fetchDeparturesFromPID(id)));
-            const mergedDepartures = allDepartures.reduce((acc, d) => {
-                if (Array.isArray(d.departures)) acc.push(...d.departures);
-                return acc;
-            }, []);
+            const results = await Promise.allSettled(gtfsIds.map(id => fetchDeparturesFromPID(id)));
+            const failures = results.filter(result => result.status === 'rejected');
+            if (failures.length > 0) {
+                console.warn(`[POLL] ${stopId}: ${failures.length}/${gtfsIds.length} departure fetches failed.`);
+                if (failures.some(result => String(result.reason?.message || '').includes('429'))) {
+                    rateLimitedStations.set(stopId, { until: Date.now() + 10000 });
+                }
+            }
+
+            const mergedDepartures = collectFulfilledDepartures(results);
 
             // Deduplicate and sort
             const deduped = Array.from(new Map(mergedDepartures.map(dep =>
@@ -751,7 +890,7 @@ function startPolling(stopId) {
                 return timeA - timeB;
             });
 
-            const newData = { departures: deduped };
+            const newData = { stopId, departures: deduped };
             const timestamp = Date.now();
 
             // Update caches

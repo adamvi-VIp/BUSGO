@@ -2,6 +2,10 @@ import React from 'react';
 
 const StopItem = React.forwardRef(({ stop, handleStopSelect, isSelected }, ref) => {
     const { name, zone, lines, platform } = stop;
+    const stopMeta = [
+        zone ? `Zone ${zone}` : null,
+        platform ? `Platform ${platform}` : null
+    ].filter(Boolean);
 
     return (
         <div
@@ -17,9 +21,11 @@ const StopItem = React.forwardRef(({ stop, handleStopSelect, isSelected }, ref) 
                 <h2 className="text-base font-semibold text-white break-all whitespace-normal">
                     {name}
                 </h2>
-                <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
-                    <span>Zone {zone} | Platform {platform || 'N/A'}</span>
-                </div>
+                {stopMeta.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-400 mt-1">
+                        {stopMeta.map(item => <span key={item}>{item}</span>)}
+                    </div>
+                )}
             </div>
             <div className="flex-shrink-0 flex flex-wrap-reverse justify-end gap-1.5 max-w-[50%]">
                 {lines?.slice(0, 4).map((line, index) => (

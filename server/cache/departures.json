@@ -23495,5 +23495,390 @@
       ]
     },
     "timestamp": 1781999520479
+  },
+  "U934Z1P": {
+    "data": {
+      "stopId": "U934Z1P",
+      "departures": [
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-06-21T23:59:00+02:00",
+            "scheduled": "2026-06-21T23:59:00+02:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-06-21T23:59:00+02:00",
+            "scheduled": "2026-06-21T23:59:00+02:00",
+            "minutes": "26"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "202",
+            "type": 3,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U934Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Čakovice",
+            "id": "202_606_250715",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-06-22T00:15:34+02:00",
+            "scheduled": "2026-06-22T00:17:00+02:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": -1,
+            "seconds": -86
+          },
+          "departure_timestamp": {
+            "predicted": "2026-06-22T00:15:34+02:00",
+            "scheduled": "2026-06-22T00:17:00+02:00",
+            "minutes": "43"
+          },
+          "last_stop": {
+            "id": "U3006Z1P",
+            "name": "Nemocnice Bulovka - gynekologie"
+          },
+          "route": {
+            "short_name": "166",
+            "type": 3,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U934Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Sídliště Čakovice",
+            "id": "166_2020_260508",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-06-22T01:11:00+02:00",
+            "scheduled": "2026-06-22T01:11:00+02:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-06-22T01:11:00+02:00",
+            "scheduled": "2026-06-22T01:11:00+02:00",
+            "minutes": "98"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "915",
+            "type": 3,
+            "is_night": true,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U934Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Miškovice",
+            "id": "915_2_250901",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-06-22T02:11:00+02:00",
+            "scheduled": "2026-06-22T02:11:00+02:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-06-22T02:11:00+02:00",
+            "scheduled": "2026-06-22T02:11:00+02:00",
+            "minutes": "158"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "915",
+            "type": 3,
+            "is_night": true,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U934Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Miškovice",
+            "id": "915_13_250901",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        }
+      ]
+    },
+    "timestamp": 1782077589067
+  },
+  "U64Z1P": {
+    "data": {
+      "stopId": "U64Z1P",
+      "departures": [
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-06-22T00:16:46+02:00",
+            "scheduled": "2026-06-22T00:18:00+02:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": -1,
+            "seconds": -74
+          },
+          "departure_timestamp": {
+            "predicted": "2026-06-22T00:16:46+02:00",
+            "scheduled": "2026-06-22T00:18:00+02:00",
+            "minutes": "43"
+          },
+          "last_stop": {
+            "id": "U3006Z1P",
+            "name": "Nemocnice Bulovka - gynekologie"
+          },
+          "route": {
+            "short_name": "166",
+            "type": 3,
+            "is_night": false,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U64Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Sídliště Čakovice",
+            "id": "166_2020_260508",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": false,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-06-22T01:12:00+02:00",
+            "scheduled": "2026-06-22T01:12:00+02:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-06-22T01:12:00+02:00",
+            "scheduled": "2026-06-22T01:12:00+02:00",
+            "minutes": "98"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "915",
+            "type": 3,
+            "is_night": true,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U64Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Miškovice",
+            "id": "915_2_250901",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-06-22T02:12:00+02:00",
+            "scheduled": "2026-06-22T02:12:00+02:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-06-22T02:12:00+02:00",
+            "scheduled": "2026-06-22T02:12:00+02:00",
+            "minutes": "158"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "915",
+            "type": 3,
+            "is_night": true,
+            "is_regional": false,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U64Z1P",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Miškovice",
+            "id": "915_13_250901",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-06-21T23:57:00+02:00",
+            "scheduled": "2026-06-21T23:57:00+02:00"
+          },
+          "delay": {
+            "is_available": true,
+            "minutes": 0,
+            "seconds": 0
+          },
+          "departure_timestamp": {
+            "predicted": "2026-06-21T23:57:00+02:00",
+            "scheduled": "2026-06-21T23:57:00+02:00",
+            "minutes": "23"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "377",
+            "type": 3,
+            "is_night": false,
+            "is_regional": true,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U64Z1",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Kostelec n.L.,nám.",
+            "id": "377_2155_250714",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": true,
+            "short_name": null
+          }
+        },
+        {
+          "arrival_timestamp": {
+            "predicted": "2026-06-22T00:37:00+02:00",
+            "scheduled": "2026-06-22T00:37:00+02:00"
+          },
+          "delay": {
+            "is_available": false,
+            "minutes": null,
+            "seconds": null
+          },
+          "departure_timestamp": {
+            "predicted": "2026-06-22T00:37:00+02:00",
+            "scheduled": "2026-06-22T00:37:00+02:00",
+            "minutes": "63"
+          },
+          "last_stop": {
+            "id": null,
+            "name": null
+          },
+          "route": {
+            "short_name": "377",
+            "type": 3,
+            "is_night": false,
+            "is_regional": true,
+            "is_substitute_transport": false
+          },
+          "stop": {
+            "id": "U64Z1",
+            "platform_code": "A"
+          },
+          "trip": {
+            "direction": null,
+            "headsign": "Kostelec n.L.,nám.",
+            "id": "377_2177_250714",
+            "is_at_stop": false,
+            "is_canceled": false,
+            "is_wheelchair_accessible": true,
+            "is_air_conditioned": null,
+            "short_name": null
+          }
+        }
+      ]
+    },
+    "timestamp": 1782077644421
   }
 }

@@ -10,6 +10,7 @@ import PWAInstallPrompt from './components/PWAInstallPrompt';
 import MapGL from './components/MapGL';
 import VersionManager from './components/VersionManager';
 import StandByMode from './components/StandByMode';
+import { getStopPrimaryId, stopHasLines, stopMatchesId } from './utils/stopIdentity.js';
 
 
 const DEBUG_LOGS = true;
@@ -143,11 +144,11 @@ const Arrival = React.forwardRef(({ arrival, onDepartureClick, isActive }, ref) 
             }}
             onClick={() => onDepartureClick && onDepartureClick(arrival)}
             data-haptic
-            className={`flex justify-between items-center p-3 mb-2 rounded-lg border-b border-gray-800 overflow-x-hidden -ml-1 cursor-pointer hover:bg-white/5 active:bg-white/10 ${isActive ? 'bg-cyan-500/20 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)] ring-1 ring-cyan-500/30' : ''}`}
+            className={`flex items-center gap-3 p-3 mb-2 rounded-lg border-b border-gray-800 overflow-hidden -ml-1 cursor-pointer hover:bg-white/5 active:bg-white/10 ${isActive ? 'bg-cyan-500/20 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)] ring-1 ring-cyan-500/30' : ''}`}
         >
-            <div className="flex items-center gap-4 mb-1 min-w-0 flex-grow">
-                <div className="flex flex-col items-center gap-1">
-                    <span className="px-[10px] py-1 rounded-lg font-bold text-center text-base shadow-md flex-shrink-0 bg-yellow-500 text-black">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+                <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                    <span className="max-w-[64px] px-[10px] py-1 rounded-lg font-bold text-center text-base shadow-md bg-yellow-500 text-black truncate">
                         {route.short_name}
                     </span>
                     {isActive && (
@@ -160,8 +161,8 @@ const Arrival = React.forwardRef(({ arrival, onDepartureClick, isActive }, ref) 
                 </div>
 
                 <div className="flex-1 min-w-0 flex flex-col justify-center">
-                    <div className="flex items-center gap-2">
-                        <span className="font-medium text-white break-words block whitespace-normal truncate">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-medium text-white block truncate min-w-0">
                             {trip.headsign}
                         </span>
                         <img
@@ -171,25 +172,25 @@ const Arrival = React.forwardRef(({ arrival, onDepartureClick, isActive }, ref) 
                         />
                     </div>
 
-                    <div className="text-sm text-gray-400 flex items-center gap-2 mt-0.5">
+                    <div className="text-sm text-gray-400 flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
                         {departure_timestamp?.scheduled && (() => {
                             const date = new Date(departure_timestamp.scheduled);
                             return !isNaN(date.getTime()) ? (
-                                <span className="text-gray-300 font-bold tabular-nums">
+                                <span className="text-gray-300 font-bold tabular-nums whitespace-nowrap">
                                     {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
                                 </span>
                             ) : null;
                         })()}
                         {delayString && (
-                            <span className={`font-semibold ${delayColor}`}>{delayString}</span>
+                            <span className={`font-semibold whitespace-nowrap ${delayColor}`}>{delayString}</span>
                         )}
                     </div>
                 </div>
             </div>
 
-            <div className="flex items-center gap-3 flex-shrink-0 min-w-[70px] justify-end mr-2">
+            <div className="flex items-center flex-shrink-0 min-w-[78px] justify-end mr-1">
                 <span
-                    className={`text-lg font-bold text-right ${isDeparting ? 'text-orange-400 animate-pulse' : 'text-white'}`}
+                    className={`inline-flex min-w-[76px] justify-end text-xl font-extrabold tabular-nums whitespace-nowrap leading-none ${isDeparting ? 'text-orange-300 animate-pulse' : 'text-white'}`}
                 >
                     {formattedTime !== 'N/A' && formattedTime !== null ? formattedTime : ''}
                 </span>
@@ -199,8 +200,14 @@ const Arrival = React.forwardRef(({ arrival, onDepartureClick, isActive }, ref) 
 });
 
 // --- Stop Modal Component ---
-const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDepartureClick, activeTripId, setActiveTripId, setTripRouteStops }) => {
+const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDepartureClick, activeTripId, setActiveTripId, setTripRouteStops, clearTripFocus }) => {
     const { name, platform, zone } = stop;
+    const stopMeta = [
+        platform ? `Platform ${platform}` : null,
+        zone ? `Zone ${zone}` : null
+    ].filter(Boolean);
+    const stopLines = React.useMemo(() => Array.isArray(stop.lines) ? stop.lines : [], [stop.lines]);
+    const hasLineRules = stopLines.length > 0;
 
     // Sticky Focus State: remembers the "intended" active trip even if it disappears momentarily
     const [autoRefocusTripId, setAutoRefocusTripId] = React.useState(null);
@@ -259,14 +266,16 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
                 const lineName = arrival.route?.short_name;
                 const headsign = (arrival.trip?.headsign || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-                const allowedLine = stop.lines?.find(l => String(l.name) === String(lineName));
-                if (!allowedLine) return false;
+                if (hasLineRules) {
+                    const allowedLine = stopLines.find(l => String(l.name) === String(lineName));
+                    if (!allowedLine) return false;
 
-                const d1 = (allowedLine.direction || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                const d2 = (allowedLine.direction2 || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                    const d1 = (allowedLine.direction || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                    const d2 = (allowedLine.direction2 || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-                const matchesDirection = headsign.includes(d1) || (d2 && headsign.includes(d2)) || d1.includes(headsign);
-                if (!matchesDirection) return false;
+                    const matchesDirection = headsign.includes(d1) || (d2 && headsign.includes(d2)) || d1.includes(headsign);
+                    if (!matchesDirection) return false;
+                }
                 // ----------------------------------------------------
 
                 const isThisActive = String(activeTripId) === String(arrival.trip.id);
@@ -305,7 +314,7 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
             return sorted.filter(d => String(d.trip.id) === String(activeTripId));
         }
         return sorted;
-    }, [realTimeData, activeTripId, now, stop.lines]);
+    }, [realTimeData, activeTripId, now, stopLines, hasLineRules]);
 
     // Effect to clear active trip focus if it departs (or restore if it returns)
     React.useEffect(() => {
@@ -317,8 +326,12 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
 
         if (activeTripId && !isActivePresent) {
             // It disappeared! Unfocus.
-            setActiveTripId(null);
-            if (setTripRouteStops) setTripRouteStops(null);
+            if (clearTripFocus) {
+                clearTripFocus();
+            } else {
+                setActiveTripId(null);
+                if (setTripRouteStops) setTripRouteStops(null);
+            }
         } else if (!activeTripId && autoRefocusTripId) {
             // Nothing is focused, but we have a "Sticky" ID. Check if it's back in the list!
             const stickyTrip = processedDepartures.find(d => d.trip.id === autoRefocusTripId);
@@ -354,17 +367,18 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
                     }}
                 >
                     <motion.header layout="position" className="flex items-center justify-between p-4 border-b border-gray-700/50 flex-shrink-0">
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                                 <h2 className="m-0 text-lg font-semibold text-white truncate">{name}</h2>
                                 {isLoadingRealTime && (
                                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                                 )}
                             </div>
-                            <div className="flex items-center gap-3 text-xs text-gray-400 mt-1">
-                                <span>Platform {platform || 'N/A'}</span>
-                                <span>Zone {zone}</span>
-                            </div>
+                            {stopMeta.length > 0 && (
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400 mt-1">
+                                    {stopMeta.map(item => <span key={item}>{item}</span>)}
+                                </div>
+                            )}
                         </div>
                         <button
                             onClick={onClose}
@@ -443,7 +457,15 @@ function App() {
     const [locationResolutionState, _setLocationResolutionState] = useState('idle'); // 'idle' | 'requesting' | 'gps' | 'fallback' | 'denied'
     const [tripRouteStops, setTripRouteStops] = useState(null); // Array of stop IDs or null
     const [tripRouteGeometry, setTripRouteGeometry] = useState(null); // GeoJSON geometry for the route line
+    const [tripShapeDistances, setTripShapeDistances] = useState(null);
+    const [tripStops, setTripStops] = useState([]);
+    const [tripVehiclePosition, setTripVehiclePosition] = useState(null);
+    const [tripRouteColor, setTripRouteColor] = useState(null);
+    const [tripRouteShortName, setTripRouteShortName] = useState(null);
+    const [metroLines, setMetroLines] = useState(null);
     const [activeTripId, setActiveTripId] = useState(null); // ID of the currently selected bus trip
+    const activeTripIdRef = useRef(null);
+    const selectedStopDataRef = useRef(null);
 
     // PWA Install Prompt state
     const [showPWAInstall, setShowPWAInstall] = useState(false);
@@ -482,6 +504,25 @@ function App() {
             console.warn('Attempted to set stationsReady to false, ignored.');
         }
     };
+    const clearTripFocus = useCallback(() => {
+        activeTripIdRef.current = null;
+        setActiveTripId(null);
+        setTripRouteStops(null);
+        setTripRouteGeometry(null);
+        setTripShapeDistances(null);
+        setTripStops([]);
+        setTripVehiclePosition(null);
+        setTripRouteColor(null);
+        setTripRouteShortName(null);
+    }, []);
+
+    useEffect(() => {
+        activeTripIdRef.current = activeTripId;
+    }, [activeTripId]);
+
+    useEffect(() => {
+        selectedStopDataRef.current = selectedStop;
+    }, [selectedStop]);
 
     // Calculate progress: 0, 33, 66, 100
     const progress = (mapReady + locationReady + stationsReady) / 3 * 100;
@@ -756,19 +797,23 @@ function App() {
             const stored = sessionStorage.getItem('selectedStop');
             if (stored) {
                 const stop = JSON.parse(stored);
-                if (stop && stop.gtfsId) {
+                const stopId = getStopPrimaryId(stop);
+                if (stop && stopId) {
+                    const hasLines = stopHasLines(stop);
                     // Only prevent duplicate emits if we're currently loading for this station
                     // if (lastRequestedStopIdRef.current === stop.gtfsId && isLoadingRealTime) return; // Allow re-request to refresh
-                    lastRequestedStopIdRef.current = stop.gtfsId;
-                    setIsLoadingRealTime(true);
+                    lastRequestedStopIdRef.current = stopId;
+                    setIsLoadingRealTime(hasLines);
+                    if (!hasLines) setRealTimeData(prev => prev || { stopId, departures: [] });
                     // DO NOT clear realTimeData here to prevent flashing
                     // setRealTimeData(null); 
-                    console.log('[REOPEN] Requesting latest data for monitored station:', stop.name, stop.gtfsId);
-                    socket.emit('requestDepartures', stop.gtfsId);
+                    console.log('[REOPEN] Requesting latest data for monitored station:', stop.name, stopId);
+                    socket.emit('requestDepartures', stopId);
                     if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
                     departureTimeoutRef.current = setTimeout(() => {
-                        if (isLoadingRealTime) {
+                        if (lastRequestedStopIdRef.current === stopId) {
                             setIsLoadingRealTime(false);
+                            setRealTimeData(prev => prev || { stopId, departures: [] });
                             // Do not show error if we have stale data, just stop loading
                             // setErrors(prev => [...prev, 'Departure data loading timed out after reconnect. Please try again.']);
                         }
@@ -865,16 +910,25 @@ function App() {
                 console.log('Received trip path stops:', data.stops.length);
 
                 // Map to internal format and merge into mapStops so they actually appear on map
-                const mappedStops = data.stops.map(s => ({
-                    uniqueStopPointId: s.stop_id,
-                    gtfsId: s.stop_id,
-                    name: s.stop_name,
-                    lat: s.lat,
-                    lon: s.lon,
-                    // Use type from server, fallback to selected stop type (via REF to avoid stale closure) or bus
-                    mainTrafficType: s.mainTrafficType || selectedStopRef.current?.mainTrafficType || 'bus',
-                    is_night: s.is_night || false
-                }));
+                const mappedStops = data.stops.map(s => {
+                    const stopId = s.stop_id || s.gtfsId || s.uniqueStopPointId;
+                    const gtfsIds = Array.isArray(s.gtfsIds) && s.gtfsIds.length ? s.gtfsIds : [s.gtfsId || stopId].filter(Boolean);
+                    return {
+                        uniqueStopPointId: s.uniqueStopPointId || stopId,
+                        gtfsId: s.gtfsId || stopId,
+                        gtfsIds,
+                        name: s.stop_name,
+                        lat: s.lat,
+                        lon: s.lon,
+                        stop_sequence: s.stop_sequence,
+                        platform: s.platform || null,
+                        zone: s.zone || null,
+                        lines: Array.isArray(s.lines) ? s.lines : [],
+                        // Use type from server, fallback to selected stop type (via REF to avoid stale closure) or bus
+                        mainTrafficType: s.mainTrafficType || selectedStopDataRef.current?.mainTrafficType || 'bus',
+                        is_night: s.is_night || false
+                    };
+                });
 
                 setMapStops(prev => {
                     const existingIds = new Set(prev.map(st => String(st.uniqueStopPointId)));
@@ -887,12 +941,24 @@ function App() {
                     return prev;
                 });
 
-                const stopIds = data.stops.map(s => s.stop_id);
+                const stopIds = Array.from(new Set(mappedStops.flatMap(s => [
+                    s.gtfsId,
+                    s.uniqueStopPointId,
+                    ...(Array.isArray(s.gtfsIds) ? s.gtfsIds : [])
+                ]).filter(Boolean).map(String)));
                 setTripRouteStops(stopIds);
+                setTripStops(mappedStops);
                 setTripRouteGeometry(data.geometry);
+                setTripShapeDistances(Array.isArray(data.shapeDistances) ? data.shapeDistances : null);
+                setTripRouteColor(data.routeColor || null);
+                setTripRouteShortName(data.routeShortName || null);
+                setTripVehiclePosition(null);
 
                 // Ensure activeTripId is set (robustness for direct URL entry or deep links later)
-                if (data.tripId) setActiveTripId(data.tripId);
+                if (data.tripId) {
+                    activeTripIdRef.current = data.tripId;
+                    setActiveTripId(data.tripId);
+                }
 
                 setIsLoadingTripPath(false);
             }
@@ -901,32 +967,52 @@ function App() {
         const handleTripPathError = (data) => {
             console.error('Trip path error:', data.error);
             setIsLoadingTripPath(false);
+            clearTripFocus();
             setErrors(prev => [...prev, { error: data.error || 'Failed to load trip path.' }]);
         };
 
+        const handleTripVehiclePositionData = (data) => {
+            if (!data || String(data.tripId) !== String(activeTripIdRef.current)) return;
+            setTripVehiclePosition(data.position || null);
+        };
+
+        const handleTripVehiclePositionError = (data) => {
+            if (!data || String(data.tripId) !== String(activeTripIdRef.current)) return;
+            setTripVehiclePosition(null);
+        };
+
+        const handleMetroLinesData = (data) => {
+            if (data && Array.isArray(data.features)) setMetroLines(data);
+        };
+
         const handleDepartureData = (data) => {
+            const currentStop = selectedStopDataRef.current;
+            if (data?.stopId && !stopMatchesId(currentStop, data.stopId)) {
+                if (DEBUG_LOGS) console.log(`[CLIENT] Ignoring stale departureData for ${data.stopId}`);
+                return;
+            }
+
             if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
             setIsLoadingRealTime(false);
 
             if (data && Array.isArray(data.departures)) {
                 // Store FULL object to match StopModal expectation
                 setRealTimeData(data);
+                setErrors(prev => prev.filter(e => !(e && typeof e === 'object' && stopMatchesId(currentStop, e.stopId))));
 
-                if (DEBUG_LOGS) console.log(`[CLIENT] Received ${data.departures.length} departures. ActiveTripId: ${activeTripId}`);
+                const currentActiveTripId = activeTripIdRef.current;
+                if (DEBUG_LOGS) console.log(`[CLIENT] Received ${data.departures.length} departures. ActiveTripId: ${currentActiveTripId}`);
 
                 // --- Sticky Trip Persistence Validation ---
-                if (activeTripId) {
-                    const normActiveId = String(activeTripId);
+                if (currentActiveTripId) {
+                    const normActiveId = String(currentActiveTripId);
                     const tripExistsAtThisStop = data.departures.some(d => String(d.trip?.id) === normActiveId);
 
                     if (DEBUG_LOGS) console.log(`[STICKY] Checking Trip ${normActiveId} in new data (${data.departures.length} departures). Found? ${tripExistsAtThisStop}`);
 
                     if (!tripExistsAtThisStop) {
                         console.log(`[STATION SWITCH] Trip ${normActiveId} not found at new stop. Falling back to normal mode.`);
-                        // Force FULL reset of focus mode
-                        setActiveTripId(null);
-                        setTripRouteStops(null);
-                        setTripRouteGeometry(null);
+                        clearTripFocus();
                     } else {
                         console.log(`[STATION SWITCH] Active trip ${normActiveId} confirmed at new stop.`);
                     }
@@ -942,15 +1028,19 @@ function App() {
             refreshInProgressRef.current = false;
         };
         const handleDepartureError = (data) => {
+            const currentStop = selectedStopDataRef.current;
+            if (data?.stopId && !stopMatchesId(currentStop, data.stopId)) {
+                if (DEBUG_LOGS) console.log(`[CLIENT] Ignoring stale departureError for ${data.stopId}`);
+                return;
+            }
+
             if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
             setIsLoadingRealTime(false);
 
             // If departure load fails, we can't confirm trip persistence
-            setActiveTripId(null);
-            setTripRouteStops(null);
-            setTripRouteGeometry(null);
+            clearTripFocus();
 
-            setErrors(prev => [...prev, { stopId: data.stopId, error: data.error || 'Failed to load real-time data.' }]);
+            setErrors(prev => [...prev, { stopId: data?.stopId, error: data?.error || 'Failed to load real-time data.' }]);
         };
 
         socket.on('stopsData', handleStopsData);
@@ -959,6 +1049,11 @@ function App() {
         socket.on('departureError', handleDepartureError);
         socket.on('tripPathData', handleTripPathData);
         socket.on('tripPathError', handleTripPathError);
+        socket.on('tripVehiclePositionData', handleTripVehiclePositionData);
+        socket.on('tripVehiclePositionError', handleTripVehiclePositionError);
+        socket.on('metroLinesData', handleMetroLinesData);
+
+        socket.emit('getMetroLines');
 
         return () => {
             socket.off('stopsData', handleStopsData);
@@ -967,8 +1062,25 @@ function App() {
             socket.off('departureError', handleDepartureError);
             socket.off('tripPathData', handleTripPathData);
             socket.off('tripPathError', handleTripPathError);
+            socket.off('tripVehiclePositionData', handleTripVehiclePositionData);
+            socket.off('tripVehiclePositionError', handleTripVehiclePositionError);
+            socket.off('metroLinesData', handleMetroLinesData);
         };
-    }, []);
+    }, [clearTripFocus]);
+
+    useEffect(() => {
+        if (!activeTripId) {
+            setTripVehiclePosition(null);
+            return undefined;
+        }
+
+        socket.emit('getTripVehiclePosition', activeTripId);
+        const id = setInterval(() => {
+            socket.emit('getTripVehiclePosition', activeTripId);
+        }, 5000);
+
+        return () => clearInterval(id);
+    }, [activeTripId]);
 
     useEffect(() => {
         if (!hasFetchedForLocation.current) {
@@ -1018,19 +1130,23 @@ function App() {
                 }
             }
             // If a stop is selected, re-monitor it
+            const selectedStopId = getStopPrimaryId(selectedStop);
             if (
-                selectedStop &&
-                lastRequestedStopIdRef.current !== selectedStop.gtfsId
+                selectedStopId &&
+                lastRequestedStopIdRef.current !== selectedStopId
             ) {
-                socket.emit('requestDepartures', selectedStop.gtfsId);
-                lastRequestedStopIdRef.current = selectedStop.gtfsId;
-                setIsLoadingRealTime(true);
+                const hasLines = stopHasLines(selectedStop);
+                socket.emit('requestDepartures', selectedStopId);
+                lastRequestedStopIdRef.current = selectedStopId;
+                setIsLoadingRealTime(hasLines);
+                if (!hasLines) setRealTimeData(prev => prev || { stopId: selectedStopId, departures: [] });
                 // DO NOT clear realTimeData here
                 // setRealTimeData(null);
                 if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
                 departureTimeoutRef.current = setTimeout(() => {
-                    if (isLoadingRealTime) {
+                    if (lastRequestedStopIdRef.current === selectedStopId) {
                         setIsLoadingRealTime(false);
+                        setRealTimeData(prev => prev || { stopId: selectedStopId, departures: [] });
                         // setErrors(prev => [...prev, 'Departure data loading timed out after reconnect. Please try again.']);
                     }
                 }, 10000);
@@ -1059,19 +1175,23 @@ function App() {
 
         // On mount, if selectedStop exists, re-monitor it (in case of reload)
         // On mount, if selectedStop exists, re-monitor it (in case of reload)
+        const selectedStopId = getStopPrimaryId(selectedStop);
         if (
-            selectedStop &&
-            lastRequestedStopIdRef.current !== selectedStop.gtfsId
+            selectedStopId &&
+            lastRequestedStopIdRef.current !== selectedStopId
         ) {
-            socket.emit('requestDepartures', selectedStop.gtfsId);
-            lastRequestedStopIdRef.current = selectedStop.gtfsId;
-            setIsLoadingRealTime(true);
+            const hasLines = stopHasLines(selectedStop);
+            socket.emit('requestDepartures', selectedStopId);
+            lastRequestedStopIdRef.current = selectedStopId;
+            setIsLoadingRealTime(hasLines);
+            if (!hasLines) setRealTimeData(prev => prev || { stopId: selectedStopId, departures: [] });
             // DO NOT clear realTimeData
             // setRealTimeData(null);
             if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
             departureTimeoutRef.current = setTimeout(() => {
-                if (isLoadingRealTime) {
+                if (lastRequestedStopIdRef.current === selectedStopId) {
                     setIsLoadingRealTime(false);
+                    setRealTimeData(prev => prev || { stopId: selectedStopId, departures: [] });
                     // setErrors(prev => [...prev, 'Departure data loading timed out after reconnect. Please try again.']);
                 }
             }, 10000);
@@ -1088,7 +1208,9 @@ function App() {
         setSearchTerm(newSearchTerm);
 
         if (selectedStop) {
-            socket.emit('stopDepartureMonitoring', selectedStop.gtfsId);
+            const selectedStopId = getStopPrimaryId(selectedStop);
+            if (selectedStopId) socket.emit('stopDepartureMonitoring', selectedStopId);
+            selectedStopDataRef.current = null;
             setSelectedStop(null);
         }
 
@@ -1122,6 +1244,7 @@ function App() {
 
         const stopGtfsId = stop.gtfsId ? String(stop.gtfsId) : null;
         const stopUniqueId = stop.uniqueStopPointId ? String(stop.uniqueStopPointId) : null;
+        const requestStopId = getStopPrimaryId(stop);
 
         // Prevent duplicate requests for the same stop
         if (selectedStop && (
@@ -1131,8 +1254,9 @@ function App() {
             return;
         }
 
-        if (selectedStop && selectedStop.gtfsId !== stop.gtfsId) {
-            socket.emit('stopDepartureMonitoring', selectedStop.gtfsId);
+        const selectedStopId = getStopPrimaryId(selectedStop);
+        if (selectedStopId && selectedStopId !== requestStopId) {
+            socket.emit('stopDepartureMonitoring', selectedStopId);
         }
 
         // Sync Map Selection to Bottom Menu:
@@ -1166,6 +1290,7 @@ function App() {
             return prev;
         });
 
+        selectedStopDataRef.current = stop;
         setSelectedStop(stop);
 
         // Auto-Exit Focus mode: 
@@ -1175,27 +1300,26 @@ function App() {
             const isPartOfTrip = tripRouteStops.includes(stopGtfsId) || tripRouteStops.includes(stopUniqueId);
             if (!isPartOfTrip) {
                 console.log(`[FOCUS] Selected stop ${stop.name} is not part of trip ${activeTripId}. Disabling focus mode.`);
-                setTripRouteStops(null);
-                setTripRouteGeometry(null);
-                setActiveTripId(null);
+                clearTripFocus();
             }
         }
 
         setIsLoadingTripPath(false); // Proactively cancel trip loading state
 
         setIsPanelExpanded(false); // Close menu on selection
-        setIsLoadingRealTime(true);
-        setRealTimeData(null); // Clear only on explicit new selection
+        const hasLines = stopHasLines(stop);
+        setIsLoadingRealTime(hasLines);
+        setRealTimeData(hasLines ? null : { stopId: requestStopId, departures: [] }); // Clear only on explicit new selection
 
-        console.log(`[CLIENT] Emitting requestDepartures for ${stop.gtfsId}`);
-        socket.emit('requestDepartures', stop.gtfsId);
-        lastRequestedStopIdRef.current = stop.gtfsId;
+        console.log(`[CLIENT] Emitting requestDepartures for ${requestStopId}`);
+        socket.emit('requestDepartures', requestStopId);
+        lastRequestedStopIdRef.current = requestStopId;
 
         if (departureTimeoutRef.current) clearTimeout(departureTimeoutRef.current);
         departureTimeoutRef.current = setTimeout(() => {
-            if (isLoadingRealTime) {
+            if (lastRequestedStopIdRef.current === requestStopId) {
                 setIsLoadingRealTime(false);
-                setErrors(prev => [...prev, 'Departure data loading timed out. Please try again.']);
+                setRealTimeData(prev => prev || { stopId: requestStopId, departures: [] });
             }
         }, 10000);
 
@@ -1215,13 +1339,13 @@ function App() {
 
     const handleCloseModal = () => {
         if (selectedStop) {
-            socket.emit('stopDepartureMonitoring', selectedStop.gtfsId);
+            const selectedStopId = getStopPrimaryId(selectedStop);
+            if (selectedStopId) socket.emit('stopDepartureMonitoring', selectedStopId);
         }
+        selectedStopDataRef.current = null;
         setSelectedStop(null);
         setRealTimeData(null);
-        setTripRouteStops(null);
-        setTripRouteGeometry(null);
-        setActiveTripId(null);
+        clearTripFocus();
         setIsLoadingTripPath(false);
         lastRequestedStopIdRef.current = null; // Reset the last requested stop ID
         // Remove from sessionStorage
@@ -1239,9 +1363,9 @@ function App() {
         // but here we want to force move and close modal.
 
         // Close modal
+        selectedStopDataRef.current = null;
         setSelectedStop(null);
-        setTripRouteStops(null);
-        setActiveTripId(null);
+        clearTripFocus();
 
         // Scroll bottom menu back to top
         if (menuScrollRef.current) {
@@ -1405,7 +1529,13 @@ function App() {
                 programmaticMoveRef={programmaticMoveRef}
                 setMapReady={setMapReady}
                 highlightedStopIds={tripRouteStops}
+                tripStops={tripStops}
                 routeGeometry={tripRouteGeometry}
+                routeShapeDistances={tripShapeDistances}
+                routeColor={tripRouteColor}
+                routeShortName={tripRouteShortName}
+                tripVehiclePosition={tripVehiclePosition}
+                metroLines={metroLines}
                 activeTripId={activeTripId}
             />
 
@@ -1489,29 +1619,29 @@ function App() {
             {selectedStop && (
                 <StopModal
                     stop={selectedStop}
-                    onClose={() => {
-                        setSelectedStop(null);
-                        setTripRouteStops(null);
-                        setTripRouteGeometry(null);
-                        setActiveTripId(null);
-                    }}
+                    onClose={handleCloseModal}
                     realTimeData={realTimeData}
                     isLoadingRealTime={isLoadingRealTime || isLoadingTripPath}
-                    error={errors.find(e => e.stopId === selectedStop.gtfsId)}
+                    error={errors.find(e => e && typeof e === 'object' && stopMatchesId(selectedStop, e.stopId))}
                     onDepartureClick={(arrival) => {
                         if (arrival && arrival.trip) {
                             if (activeTripId === arrival.trip.id) {
                                 // Toggle OFF
                                 console.log('Departure clicked (Toggle ID match), clearing focus');
-                                setActiveTripId(null);
-                                setTripRouteStops(null);
-                                setTripRouteGeometry(null);
+                                clearTripFocus();
                             } else {
                                 // Toggle ON
                                 console.log('Departure clicked, requesting path for:', arrival.trip.id);
                                 setIsPanelExpanded(false); // Close menu on trip select
+                                activeTripIdRef.current = arrival.trip.id;
                                 setActiveTripId(arrival.trip.id);
+                                setTripRouteStops(null);
                                 setTripRouteGeometry(null); // Reset until new one arrives
+                                setTripShapeDistances(null);
+                                setTripStops([]);
+                                setTripVehiclePosition(null);
+                                setTripRouteColor(null);
+                                setTripRouteShortName(null);
                                 setIsLoadingTripPath(true);
                                 // Send full trip object to helper server resolve IDs
                                 socket.emit('getTripPath', arrival.trip);
@@ -1521,6 +1651,7 @@ function App() {
                     activeTripId={activeTripId}
                     setActiveTripId={setActiveTripId}
                     setTripRouteStops={setTripRouteStops}
+                    clearTripFocus={clearTripFocus}
                 />
             )}
             <ErrorsSection errors={errors.filter(e => !e.stopId)} removeError={removeError} />

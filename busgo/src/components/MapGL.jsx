@@ -25,9 +25,38 @@ import trainIconDimmed from '../assets/train-icon-dimmed.png';
 import ferryIconDimmed from '../assets/ferry-icon-dimmed.png';
 import trolleybusIconDimmed from '../assets/trolleybus-icon-dimmed.png';
 import nightIconDimmed from '../assets/night-icon-dimmed.png';
+import { splitLineByProgress } from '../utils/routeSegments.js';
 
 const DEFAULT_CENTER = [14.4378, 50.0755]; // Prague
 const DEFAULT_ZOOM = 16;
+const EMPTY_LINE = { type: 'LineString', coordinates: [] };
+
+function lineFeature(geometry = EMPTY_LINE, properties = {}) {
+  return { type: 'Feature', geometry, properties };
+}
+
+function vehicleToGeoJSON(position) {
+  return {
+    type: 'FeatureCollection',
+    features: position?.coordinates
+      ? [lineFeature({ type: 'Point', coordinates: position.coordinates }, { bearing: position.bearing || 0 })]
+      : []
+  };
+}
+
+function metroLinesToGeoJSON(metroLines, activeShortName) {
+  const features = Array.isArray(metroLines?.features) ? metroLines.features : [];
+  return {
+    type: 'FeatureCollection',
+    features: features.map(feature => ({
+      ...feature,
+      properties: {
+        ...(feature.properties || {}),
+        is_active: !!activeShortName && String(feature.properties?.route_short_name) === String(activeShortName)
+      }
+    }))
+  };
+}
 
 function getIconName(stop, isTripActive = false, isSelectionOverlay = false) {
   if (!stop) return 'bus-icon';
@@ -87,10 +116,47 @@ function selectedToGeoJSON(stop, isTripActive = false) {
   };
 }
 
+function stopIdExpression(field, ids) {
+  return ['in', ['string', ['get', field]], ['literal', (ids || []).map(String)]];
+}
+
+function routeStopOpacityExpression(selectedStop, highlightedStopIds, nextStopId) {
+  const selectedId = String(selectedStop?.uniqueStopPointId || '');
+  if (!selectedId) return 1;
+  if (!highlightedStopIds || highlightedStopIds.length === 0) {
+    return ['case', ['==', ['string', ['get', 'uniqueStopPointId']], selectedId], 0, 1];
+  }
+
+  return ['case',
+    ['==', ['string', ['get', 'uniqueStopPointId']], selectedId], 0,
+    ['any', stopIdExpression('uniqueStopPointId', [nextStopId]), stopIdExpression('gtfsId', [nextStopId])], 1,
+    ['any', stopIdExpression('uniqueStopPointId', highlightedStopIds), stopIdExpression('gtfsId', highlightedStopIds)], 0.78,
+    0.14
+  ];
+}
+
+function routeStopSizeExpression(highlightedStopIds, nextStopId) {
+  const base = ['interpolate', ['linear'], ['zoom'], 12, 0.5, 16, 1];
+  if (!highlightedStopIds || highlightedStopIds.length === 0) return base;
+  return ['case',
+    ['any', stopIdExpression('uniqueStopPointId', [nextStopId]), stopIdExpression('gtfsId', [nextStopId])],
+    ['interpolate', ['linear'], ['zoom'], 12, 0.7, 16, 1.25],
+    ['any', stopIdExpression('uniqueStopPointId', highlightedStopIds), stopIdExpression('gtfsId', highlightedStopIds)],
+    ['interpolate', ['linear'], ['zoom'], 12, 0.55, 16, 1.05],
+    base
+  ];
+}
+
 const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefreshing, programmaticMoveRef,
   setMapReady,
   highlightedStopIds,
+  tripStops,
   routeGeometry,
+  routeShapeDistances,
+  routeColor,
+  routeShortName,
+  tripVehiclePosition,
+  metroLines,
   activeTripId
 }) => {
   const containerRef = useRef(null);
@@ -100,7 +166,14 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
   const busClickHandlerRef = React.useRef(null);
   const stationClickHandlerRef = React.useRef(null);
   const initialUserMoveDoneRef = useRef(false);
-  const lastFittedTripIdRef = useRef(null);
+  const lastFocusedTripIdRef = useRef(null);
+  const metroLinesRef = useRef(metroLines);
+  const routeShortNameRef = useRef(routeShortName);
+
+  useEffect(() => {
+    metroLinesRef.current = metroLines;
+    routeShortNameRef.current = routeShortName;
+  }, [metroLines, routeShortName]);
 
   useEffect(() => {
     const center = selectedStop && selectedStop.lat !== undefined && selectedStop.lon !== undefined && !isNaN(selectedStop.lat) && !isNaN(selectedStop.lon)
@@ -217,28 +290,44 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
         // 1. All Other Stops (Bottom)
         // 2. Selected Stop (Top)
 
-        // 3. Route Line (Bottom-most of our layers)
-        map.addSource('route-line', {
-          type: 'geojson',
-          data: {
-            type: 'Feature',
-            geometry: routeGeometry || { type: 'LineString', coordinates: [] },
-            properties: {}
+        map.addSource('metro-lines', { type: 'geojson', data: metroLinesToGeoJSON(metroLinesRef.current, routeShortNameRef.current) });
+        map.addLayer({
+          id: 'metro-lines-layer',
+          type: 'line',
+          source: 'metro-lines',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-color': ['coalesce', ['get', 'route_color'], '#ffffff'],
+            'line-width': ['case', ['boolean', ['get', 'is_active'], false], 5, 3],
+            'line-opacity': ['case', ['boolean', ['get', 'is_active'], false], 0.65, 0.22]
+          }
+        });
+
+        const initialSegments = splitLineByProgress(routeGeometry, routeShapeDistances, tripVehiclePosition);
+        map.addSource('route-past', { type: 'geojson', data: lineFeature(initialSegments.past) });
+        map.addSource('route-future', { type: 'geojson', data: lineFeature(initialSegments.future) });
+
+        map.addLayer({
+          id: 'route-past-layer',
+          type: 'line',
+          source: 'route-past',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-color': routeColor || '#3b82f6',
+            'line-width': 4,
+            'line-opacity': 0.28
           }
         });
 
         map.addLayer({
-          id: 'route-line-layer',
+          id: 'route-future-layer',
           type: 'line',
-          source: 'route-line',
-          layout: {
-            'line-join': 'round',
-            'line-cap': 'round'
-          },
+          source: 'route-future',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
           paint: {
-            'line-color': '#3b82f6', // Bright blue
-            'line-width': 4,
-            'line-opacity': 0.8
+            'line-color': routeColor || '#3b82f6',
+            'line-width': 5,
+            'line-opacity': 0.9
           }
         });
 
@@ -283,6 +372,24 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
           }
         });
 
+        map.addSource('live-bus', { type: 'geojson', data: vehicleToGeoJSON(tripVehiclePosition) });
+        map.addLayer({
+          id: 'live-bus-layer',
+          type: 'symbol',
+          source: 'live-bus',
+          layout: {
+            'icon-image': 'bus-icon',
+            'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.65, 16, 1.15],
+            'icon-allow-overlap': true,
+            'icon-ignore-placement': true,
+            'icon-rotate': ['get', 'bearing'],
+            'icon-rotation-alignment': 'map'
+          },
+          paint: {
+            'icon-opacity': 1
+          }
+        });
+
         // User location
         map.addSource('user', { type: 'geojson', data: userToGeoJSON(userLocation) });
         map.addLayer({
@@ -301,24 +408,11 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
         // Update opacity for the first time if selectedStop exists
         if (selectedStop && selectedStop.uniqueStopPointId) {
           try {
-            const uniqueId = String(selectedStop.uniqueStopPointId);
-            let opacityExpression;
-            if (highlightedStopIds && highlightedStopIds.length > 0) {
-              opacityExpression = [
-                'case',
-                ['==', ['string', ['get', 'uniqueStopPointId']], uniqueId], 0,
-                ['in', ['get', 'gtfsId'], ['literal', highlightedStopIds]], 1,
-                0.2
-              ];
-            } else {
-              opacityExpression = [
-                'case',
-                ['==', ['string', ['get', 'uniqueStopPointId']], uniqueId], 0,
-                1
-              ];
-            }
+            const routeStopIds = highlightedStopIds?.length ? highlightedStopIds : (tripStops || []).map(stop => stop.uniqueStopPointId || stop.gtfsId);
+            const opacityExpression = routeStopOpacityExpression(selectedStop, routeStopIds, tripVehiclePosition?.nextStopId);
             if (map.getLayer('bus-stops')) {
               map.setPaintProperty('bus-stops', 'icon-opacity', opacityExpression);
+              map.setLayoutProperty('bus-stops', 'icon-size', routeStopSizeExpression(routeStopIds, tripVehiclePosition?.nextStopId));
             }
 
             if (map.getLayer('selected-stop-bus')) {
@@ -392,28 +486,13 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
     const id = selectedStop?.uniqueStopPointId;
     if (id) {
       try {
-        const uniqueId = String(selectedStop?.uniqueStopPointId || '');
-
-        const opacityExpression = highlightedStopIds && highlightedStopIds.length > 0
-          ? ['case',
-            ['==', ['string', ['get', 'uniqueStopPointId']], uniqueId], 0,
-            ['any',
-              ['in', ['string', ['get', 'uniqueStopPointId']], ['literal', highlightedStopIds.map(String)]],
-              ['in', ['string', ['get', 'gtfsId']], ['literal', highlightedStopIds.map(String)]]
-            ], 1,
-            0.15
-          ]
-          : ['case',
-            ['==', ['string', ['get', 'uniqueStopPointId']], uniqueId], 0,
-            1
-          ];
+        const nextStopId = tripVehiclePosition?.nextStopId;
+        const routeStopIds = highlightedStopIds?.length ? highlightedStopIds : (tripStops || []).map(stop => stop.uniqueStopPointId || stop.gtfsId);
+        const opacityExpression = routeStopOpacityExpression(selectedStop, routeStopIds, nextStopId);
 
         if (map.getLayer('bus-stops')) {
           map.setPaintProperty('bus-stops', 'icon-opacity', opacityExpression);
-
-          // Maintain consistent sizing as requested
-          const sizeExpression = ['interpolate', ['linear'], ['zoom'], 12, 0.5, 16, 1];
-          map.setLayoutProperty('bus-stops', 'icon-size', sizeExpression);
+          map.setLayoutProperty('bus-stops', 'icon-size', routeStopSizeExpression(routeStopIds, nextStopId));
         }
 
         if (map.getLayer('selected-stop-bus')) {
@@ -437,43 +516,29 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
       } catch (e) { }
     }
 
-  }, [selectedStop, highlightedStopIds]); // Added highlightedStopIds dependency
+  }, [selectedStop, highlightedStopIds, tripStops, tripVehiclePosition]); // Added highlightedStopIds dependency
 
-  // Fit to route effect - ONLY ONCE PER TRIP
+  // Focus selected trip once on the live vehicle, then leave user pan/zoom alone.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !highlightedStopIds || highlightedStopIds.length < 2 || !activeTripId) return;
-
-    // Only fit if this is a NEW trip focus
-    if (lastFittedTripIdRef.current === activeTripId) {
+    if (!map) return;
+    if (!activeTripId) {
+      lastFocusedTripIdRef.current = null;
       return;
     }
 
-    // Filter relevant stops to get coordinates
-    const routeStops = (stops || []).filter(s => highlightedStopIds.includes(s.uniqueStopPointId));
-    if (routeStops.length < 2) return;
+    if (lastFocusedTripIdRef.current === activeTripId) return;
+    const center = tripVehiclePosition?.coordinates;
+    if (!center) return;
 
     try {
-      const bounds = new maplibregl.LngLatBounds();
-      routeStops.forEach(s => {
-        if (s.lon !== undefined && s.lat !== undefined && !isNaN(s.lon) && !isNaN(s.lat)) {
-          bounds.extend([s.lon, s.lat]);
-        }
-      });
-
-      if (!bounds.isEmpty()) {
-        console.log('[MapGL] Fitting bounds for trip:', activeTripId);
-        map.fitBounds(bounds, {
-          padding: { top: 150, bottom: 250, left: 50, right: 50 },
-          maxZoom: 16,
-          duration: 1000
-        });
-        lastFittedTripIdRef.current = activeTripId;
-      }
+      if (programmaticMoveRef) programmaticMoveRef.current = true;
+      map.flyTo({ center, zoom: 16.5, duration: 900, essential: true });
+      lastFocusedTripIdRef.current = activeTripId;
     } catch (e) {
-      console.error('[MapGL] Error fitting bounds to route:', e);
+      console.error('[MapGL] Error focusing live vehicle:', e);
     }
-  }, [highlightedStopIds, activeTripId]); // Removed 'stops' dependency to allow user manual pan/zoom after initial fit
+  }, [activeTripId, tripVehiclePosition, programmaticMoveRef]);
 
   // Stop click handlers effect
   useEffect(() => {
@@ -557,15 +622,30 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const src = map.getSource && map.getSource('route-line');
-    if (src && src.setData) {
-      src.setData({
-        type: 'Feature',
-        geometry: routeGeometry || { type: 'LineString', coordinates: [] },
-        properties: {}
-      });
-    }
-  }, [routeGeometry]);
+    const segments = splitLineByProgress(routeGeometry, routeShapeDistances, tripVehiclePosition);
+    const past = map.getSource && map.getSource('route-past');
+    const future = map.getSource && map.getSource('route-future');
+    if (past && past.setData) past.setData(lineFeature(segments.past));
+    if (future && future.setData) future.setData(lineFeature(segments.future));
+
+    const color = routeColor || '#3b82f6';
+    if (map.getLayer('route-past-layer')) map.setPaintProperty('route-past-layer', 'line-color', color);
+    if (map.getLayer('route-future-layer')) map.setPaintProperty('route-future-layer', 'line-color', color);
+  }, [routeGeometry, routeShapeDistances, tripVehiclePosition, routeColor]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const src = map.getSource && map.getSource('live-bus');
+    if (src && src.setData) src.setData(vehicleToGeoJSON(tripVehiclePosition));
+  }, [tripVehiclePosition]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const src = map.getSource && map.getSource('metro-lines');
+    if (src && src.setData) src.setData(metroLinesToGeoJSON(metroLines, routeShortName));
+  }, [metroLines, routeShortName]);
 
   // Camera movement: selected stop only (do not move on userLocation updates)
   useEffect(() => {
