@@ -4,29 +4,31 @@ import { Server } from 'socket.io';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import fs from 'fs/promises';
-import { existsSync } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 // --- Configuration & Constants ---
 const DEBUG_LOGS = false;
 const CACHE_DIR = './server/cache';
 const STATIONS_FILE = path.join(CACHE_DIR, 'stations.json');
-const LINES_FILE = path.join(CACHE_DIR, 'lines.json');
 const DEPARTURES_CACHE_FILE = path.join(CACHE_DIR, 'departures.json');
 
 const STOPS_JSON_URL = 'https://data.pid.cz/stops/json/stops.json';
-const LINES_JSON_URL = 'https://data.pid.cz/geodata/Linky_WGS84.json';
 const GOLEMIO_API_BASE = 'https://api.golemio.cz/v2';
 const GOLEMIO_DEPARTURES_URL = `${GOLEMIO_API_BASE}/pid/departureboards`;
-const GOLEMIO_STOP_TIMES_URL = 'https://api.golemio.cz/v2/gtfs/stoptimes';
+const GOLEMIO_GTFS_TRIPS_URL = `${GOLEMIO_API_BASE}/gtfs/trips`;
+const GOLEMIO_GTFS_SHAPES_URL = `${GOLEMIO_API_BASE}/gtfs/shapes`;
+const GOLEMIO_GTFS_STOPS_URL = `${GOLEMIO_API_BASE}/gtfs/stops`;
 
 const POLLING_INTERVAL = 10000; // 10 seconds
 const DEPARTURE_CACHE_MAX_AGE_MS = 8000; // 8 seconds
+const TRIP_PATH_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // --- State Variables ---
 let processedStopsCache = [];
-let processedLinesCache = [];
 let tempDepartureCache = {}; // In-memory mirror of departures.json
+const tripPathCache = new Map(); // key: tripId, value: { timestamp, data }
+const shapeCache = new Map(); // key: shapeId, value: { timestamp, data }
 
 // Real-time polling state
 const activeTimers = new Map(); // key: stopId
@@ -84,283 +86,8 @@ function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
     return R * c;
 }
 
-function getStopNameById(stopId) {
-    const stop = processedStopsCache.find(stop => stop.gtfsId === stopId || (Array.isArray(stop.gtfsIds) && stop.gtfsIds.includes(stopId)));
-    return stop ? stop.name : 'Unknown';
-}
-
 function formatTime(date) {
     return date.toTimeString().split(' ')[0];
-}
-
-// --- Spatial Filtering ---
-function filterGeometry(geometry, stops) {
-    if (!geometry || !stops || stops.length === 0) return geometry;
-    if (geometry.type !== 'MultiLineString' && geometry.type !== 'LineString') return geometry;
-
-    const segments = geometry.type === 'LineString' ? [geometry.coordinates] : geometry.coordinates;
-    const stopMatchingThresholdKm = 0.25; // 250m for stop-to-segment mapping
-    const connectivityThresholdKm = 0.3;  // 300m to bridge data gaps (initial graph)
-    const tightConnectionThresholdKm = 0.02; // 20m for "physical touch" weight boost
-
-    // 1. Map each stop to one or more potential segment indices
-    const stopSegments = stops.map(stop => {
-        const matches = [];
-        let minDist = Infinity;
-        let bestIdx = -1;
-
-        segments.forEach((line, idx) => {
-            let localMin = Infinity;
-            line.forEach(p => {
-                const d = getDistanceFromLatLonInKm(stop.lat, stop.lon, p[1], p[0]);
-                if (d < localMin) localMin = d;
-            });
-
-            if (localMin < stopMatchingThresholdKm) {
-                matches.push({ idx, dist: localMin });
-            }
-            if (localMin < minDist) {
-                minDist = localMin;
-                bestIdx = idx;
-            }
-        });
-
-        // Refinement: If we have very close matches (< 50m), prefer them exclusively
-        // This prevents shortcuts (e.g. 150m away) from being used as start/end points if the 
-        // real segment is right there (0-20m away).
-        const tightMatches = matches.filter(m => m.dist < 0.05);
-        if (tightMatches.length > 0) {
-            return tightMatches.map(m => m.idx);
-        }
-
-        if (matches.length === 0 && bestIdx !== -1) {
-            matches.push({ idx: bestIdx, dist: minDist });
-        }
-        return matches.map(m => m.idx);
-    });
-
-    // 2. Build connectivity graph with weights
-    // weight 1: physically touching or nearly touching
-    // weight 10-100: bridging a gap (penalty to avoid "skipping" real turns if a shortcut exists)
-    const adj = Array.from({ length: segments.length }, () => []);
-    for (let i = 0; i < segments.length; i++) {
-        for (let j = i + 1; j < segments.length; j++) {
-            const segA = segments[i];
-            const segB = segments[j];
-            const endA = [segA[0], segA[segA.length - 1]];
-            const endB = [segB[0], segB[segB.length - 1]];
-
-            let minGap = Infinity;
-
-            // Check endpoint distances
-            endA.forEach(pA => {
-                endB.forEach(pB => {
-                    const d = getDistanceFromLatLonInKm(pA[1], pA[0], pB[1], pB[0]);
-                    if (d < minGap) minGap = d;
-                });
-            });
-
-            // Resilient T-junction check
-            if (minGap > tightConnectionThresholdKm) {
-                endA.forEach(pA => {
-                    segB.forEach(pB => {
-                        const d = getDistanceFromLatLonInKm(pA[1], pA[0], pB[1], pB[0]);
-                        if (d < minGap) minGap = d;
-                    });
-                });
-                endB.forEach(pB => {
-                    segA.forEach(pA => {
-                        const d = getDistanceFromLatLonInKm(pB[1], pB[0], pA[1], pA[0]);
-                        if (d < minGap) minGap = d;
-                    });
-                });
-            }
-
-            if (minGap < connectivityThresholdKm) {
-                // Weight logic: 1 for touching, scaling up for gaps
-                const weight = minGap < tightConnectionThresholdKm ? 1 : Math.ceil(minGap * 500);
-                adj[i].push({ to: j, weight });
-                adj[j].push({ to: i, weight });
-            }
-        }
-    }
-
-    const keepIndices = new Set();
-    const orderedSegments = []; // Track ordered segments for smoothing [segIndices]
-
-
-    // 3. Dijkstra-style Pathfinding
-    for (let i = 0; i < stopSegments.length - 1; i++) {
-        const starts = stopSegments[i];
-        const ends = stopSegments[i + 1];
-        if (starts.length === 0 || ends.length === 0) continue;
-
-        // BFS simulation with weight tracking (Dijkstra)
-        const queue = starts.map(s => ({ node: s, weight: 0, path: [s] }));
-        const visited = new Map(); // node -> min weight to reach
-        starts.forEach(s => visited.set(s, 0));
-
-        let bestPath = null;
-        let minWeightFound = Infinity;
-
-        while (queue.length > 0) {
-            // Priority: smallest total weight first
-            queue.sort((a, b) => a.weight - b.weight);
-            const { node, weight, path } = queue.shift();
-
-            if (weight > minWeightFound) continue;
-
-            if (ends.includes(node)) {
-                if (weight < minWeightFound) {
-                    minWeightFound = weight;
-                    bestPath = path;
-                }
-                continue;
-            }
-
-            if (path.length > 100) continue;
-
-            for (const edge of adj[node]) {
-                const newWeight = weight + edge.weight;
-                if (!visited.has(edge.to) || visited.get(edge.to) > newWeight) {
-                    visited.set(edge.to, newWeight);
-                    queue.push({ node: edge.to, weight: newWeight, path: [...path, edge.to] });
-                }
-            }
-        }
-
-        if (bestPath) {
-            bestPath.forEach(idx => keepIndices.add(idx));
-            // Add to ordered list
-            if (i === 0) {
-                orderedSegments.push(...bestPath);
-            } else {
-                // Determine if we need to add from start, handling overlap with previous segment in chain
-                const last = orderedSegments[orderedSegments.length - 1];
-                const startIdx = bestPath[0] === last ? 1 : 0;
-                orderedSegments.push(...bestPath.slice(startIdx));
-            }
-        } else {
-            // Fallback: More generous spatial buffer if pathfinding fails
-            const stopA = stops[i];
-            const stopB = stops[i + 1];
-            const centerLat = (stopA.lat + stopB.lat) / 2;
-            const centerLon = (stopA.lon + stopB.lon) / 2;
-            const distBetweenStops = getDistanceFromLatLonInKm(stopA.lat, stopA.lon, stopB.lat, stopB.lon);
-            const radius = distBetweenStops / 2 + 0.5; // 500m buffer
-
-            segments.forEach((line, idx) => {
-                const isNear = line.some(p => getDistanceFromLatLonInKm(centerLat, centerLon, p[1], p[0]) < radius);
-                if (isNear) {
-                    keepIndices.add(idx);
-                    if (!orderedSegments.includes(idx)) orderedSegments.push(idx);
-                }
-            });
-        }
-    }
-
-    // Always keep segments near the first and last stops
-    if (stopSegments.length > 0) {
-        stopSegments[0].forEach(idx => {
-            keepIndices.add(idx);
-            if (!orderedSegments.includes(idx)) orderedSegments.unshift(idx);
-        });
-        stopSegments[stopSegments.length - 1].forEach(idx => {
-            keepIndices.add(idx);
-            if (!orderedSegments.includes(idx)) orderedSegments.push(idx);
-        });
-    }
-
-    // Safety: If we filtered everything (shouldn't happen), return original
-    if (keepIndices.size === 0) return geometry;
-
-    // --- SMOOTHING ---
-    // Merge segments into a single LineString if possible
-    try {
-        if (orderedSegments.length > 0) {
-            const mergedCoords = [];
-
-            const distEx = (p1, p2) => getDistanceFromLatLonInKm(p1[1], p1[0], p2[1], p2[0]);
-
-            // Initial segment orientation
-            let seg0 = segments[orderedSegments[0]];
-            // Basic orientation check against next segment if available
-            if (orderedSegments.length > 1) {
-                const nextSeg = segments[orderedSegments[1]];
-                const dStartToNext = distEx(seg0[0], nextSeg[0]) + distEx(seg0[0], nextSeg[nextSeg.length - 1]);
-                const dEndToNext = distEx(seg0[seg0.length - 1], nextSeg[0]) + distEx(seg0[seg0.length - 1], nextSeg[nextSeg.length - 1]);
-
-                // If end is closer to next segment than start, it's correctly oriented (Start->End -> Next)
-                // If start is closer, we might need to flip (End->Start -> Next)
-                if (dStartToNext < dEndToNext) {
-                    seg0 = [...seg0].reverse();
-                }
-            } else if (stops && stops.length > 0) {
-                // Single segment, orient by stops
-                const dStart = distEx(stops[0], seg0[0]);
-                const dEnd = distEx(stops[0], seg0[seg0.length - 1]);
-                if (dEnd < dStart) {
-                    seg0 = [...seg0].reverse();
-                }
-            }
-
-            mergedCoords.push(...seg0);
-
-            for (let k = 1; k < orderedSegments.length; k++) {
-                const nextSegRaw = segments[orderedSegments[k]];
-                const lastPoint = mergedCoords[mergedCoords.length - 1];
-
-                const dStart = distEx(lastPoint, nextSegRaw[0]);
-                const dEnd = distEx(lastPoint, nextSegRaw[nextSegRaw.length - 1]);
-
-                if (dStart < dEnd) {
-                    // Next segment is regular
-                    const toAdd = dStart < 0.005 ? nextSegRaw.slice(1) : nextSegRaw;
-                    mergedCoords.push(...toAdd);
-                } else {
-                    // Next segment needs flipping
-                    const reversed = [...nextSegRaw].reverse();
-                    const toAdd = dEnd < 0.005 ? reversed.slice(1) : reversed;
-                    mergedCoords.push(...toAdd);
-                }
-            }
-
-            // Chaikin Smoothing Function
-            const smooth = (coords) => {
-                if (coords.length < 3) return coords;
-                const newCoords = [];
-                newCoords.push(coords[0]); // Keep start
-                for (let i = 0; i < coords.length - 1; i++) {
-                    const p0 = coords[i];
-                    const p1 = coords[i + 1];
-
-                    // Q: 0.75*p0 + 0.25*p1
-                    // R: 0.25*p0 + 0.75*p1
-                    const Q = [0.75 * p0[0] + 0.25 * p1[0], 0.75 * p0[1] + 0.25 * p1[1]];
-                    const R = [0.25 * p0[0] + 0.75 * p1[0], 0.25 * p0[1] + 0.75 * p1[1]];
-                    newCoords.push(Q, R);
-                }
-                newCoords.push(coords[coords.length - 1]); // Keep end
-                return newCoords;
-            };
-
-            // 2 Iterations
-            let smoothed = smooth(mergedCoords);
-            smoothed = smooth(smoothed);
-
-            return {
-                type: 'LineString', // Return single smooth line
-                coordinates: smoothed
-            };
-        }
-    } catch (e) {
-        console.error('[Smoothing] Failed, returning regular multilinestring', e);
-    }
-
-    return {
-        type: 'MultiLineString',
-        coordinates: segments.filter((_, idx) => keepIndices.has(idx))
-    };
 }
 
 // --- Terminal UI ---
@@ -379,10 +106,6 @@ function printStatus() {
     // Stations Cache Status
     const stationsCount = processedStopsCache.length;
     console.log(`| [CACHE]   Stations:      ${stationsCount.toString().padEnd(6)} (24h refresh)   |`);
-
-    // Lines Cache Status
-    const linesCount = processedLinesCache.features ? processedLinesCache.features.length : 0;
-    console.log(`| [CACHE]   Lines:         ${linesCount.toString().padEnd(6)} (24h refresh)   |`);
 
     // Departures Cache Status
     const departuresCount = Object.keys(tempDepartureCache).length;
@@ -576,20 +299,6 @@ async function refreshStationsCache() {
     }
 }
 
-async function refreshLinesCache() {
-    try {
-        if (DEBUG_LOGS) console.log(`[CACHE] Downloading lines...`);
-        const response = await axios.get(LINES_JSON_URL);
-        if (response.data) {
-            processedLinesCache = response.data;
-            await saveJsonFile(LINES_FILE, processedLinesCache);
-            updateStatusUI();
-        }
-    } catch (error) {
-        console.error('[CACHE] Failed to refresh lines:', error.message);
-    }
-}
-
 async function initCaches() {
     await ensureCacheDir();
 
@@ -601,15 +310,7 @@ async function initCaches() {
         await refreshStationsCache();
     }
 
-    // 2. Load Lines
-    const cachedLines = await loadJsonFile(LINES_FILE);
-    if (cachedLines) {
-        processedLinesCache = cachedLines;
-    } else {
-        await refreshLinesCache();
-    }
-
-    // 3. Load Departures (Persistent)
+    // 2. Load Departures (Persistent)
     tempDepartureCache = await loadJsonFile(DEPARTURES_CACHE_FILE, {});
     // Hydrate in-memory lastKnownData from disk cache
     for (const stopId in tempDepartureCache) {
@@ -623,7 +324,6 @@ async function initCaches() {
 
     // Schedule 24h updates
     setInterval(refreshStationsCache, 24 * 60 * 60 * 1000);
-    setInterval(refreshLinesCache, 24 * 60 * 60 * 1000);
 }
 
 
@@ -716,87 +416,160 @@ async function fetchDeparturesFromPID(stopId) {
     }
 }
 
-async function fetchTripStops(tripId) {
-    if (!API_KEY) throw new Error("API key is missing");
+function getGolemioHeaders() {
+    return { 'x-access-token': API_KEY, 'Content-Type': 'application/json' };
+}
 
-    // Use Public GTFS Static Lookup (v2) which reliably returns stop sequences for live trips
-    const url = `https://api.golemio.cz/v2/public/gtfs/trips/${tripId}?scopes=stop_times`;
+function getFreshCache(cache, key) {
+    const entry = cache.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp < TRIP_PATH_CACHE_MAX_AGE_MS) return entry.data;
+    cache.delete(key);
+    return null;
+}
 
+function setFreshCache(cache, key, data) {
+    cache.set(key, { timestamp: Date.now(), data });
+    return data;
+}
+
+function findCachedStop(stopId) {
+    const normalized = String(stopId);
+    return processedStopsCache.find(stop =>
+        String(stop.gtfsId) === normalized ||
+        (Array.isArray(stop.gtfsIds) && stop.gtfsIds.map(String).includes(normalized))
+    );
+}
+
+function toFiniteNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
+export function shapeFeaturesToLineString(shapeData) {
+    const features = Array.isArray(shapeData?.features) ? shapeData.features : [];
+    const coordinates = features
+        .map(feature => {
+            const coords = feature?.geometry?.coordinates || [];
+            const lon = toFiniteNumber(coords[0]);
+            const lat = toFiniteNumber(coords[1]);
+            if (lon === null || lat === null) return null;
+            return {
+                sequence: toFiniteNumber(feature?.properties?.shape_pt_sequence) ?? 0,
+                coordinates: [lon, lat]
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.sequence - b.sequence)
+        .map(point => point.coordinates);
+
+    return { type: 'LineString', coordinates };
+}
+
+async function fetchShapeGeometry(shapeId) {
+    const cached = getFreshCache(shapeCache, shapeId);
+    if (cached) return cached;
+
+    const url = `${GOLEMIO_GTFS_SHAPES_URL}/${encodeURIComponent(shapeId)}`;
+    const response = await axios.get(url, {
+        headers: getGolemioHeaders(),
+        timeout: 8000
+    });
+
+    const geometry = shapeFeaturesToLineString(response.data);
+    if (geometry.coordinates.length === 0) {
+        throw new Error(`No shape geometry found for ${shapeId}`);
+    }
+    return setFreshCache(shapeCache, shapeId, geometry);
+}
+
+async function fetchStopFeatures(stopIds) {
+    const uniqueIds = Array.from(new Set(stopIds.filter(Boolean).map(String)));
+    if (uniqueIds.length === 0) return new Map();
+
+    const query = uniqueIds.map(id => `ids[]=${encodeURIComponent(id)}`).join('&');
     try {
-        if (DEBUG_LOGS) console.log(`[API] Fetching trip stops (Public Lookup): ${url}`);
-        const response = await axios.get(url, {
-            headers: { 'x-access-token': API_KEY, 'Content-Type': 'application/json' },
+        const response = await axios.get(`${GOLEMIO_GTFS_STOPS_URL}?${query}`, {
+            headers: getGolemioHeaders(),
             timeout: 8000
         });
-
-        // The response is a FeatureCollection if scoped with stop_times
-        if (response.data && response.data.stop_times && Array.isArray(response.data.stop_times.features)) {
-            const features = response.data.stop_times.features;
-            if (DEBUG_LOGS) console.log(`[API] Found ${features.length} features for trip ${tripId}`);
-
-            // Map features to the expected stop format, resolving stop_id via coordinates if missing
-            const resolvedStops = features.map(feature => {
-                const props = feature.properties || {};
-                const coords = feature.geometry?.coordinates || []; // [lon, lat]
-
-                let stopId = props.stop_id;
-                let resolvedUniqueId = null;
-                let resolvedStation = null;
-
-                // 1. Try to find the station in our cache that contains this GTFS ID
-                if (stopId) {
-                    resolvedStation = processedStopsCache.find(s =>
-                        s.gtfsId === stopId || (Array.isArray(s.gtfsIds) && s.gtfsIds.includes(stopId))
-                    );
-                    if (resolvedStation) resolvedUniqueId = resolvedStation.uniqueStopPointId;
-                }
-
-                // 2. Fallback: match by coordinates if ID not found or missing
-                if (!resolvedUniqueId && coords.length === 2) {
-                    const lon = coords[0];
-                    const lat = coords[1];
-                    let closest = null;
-                    let minDist = 0.1; // 100m threshold (increased for better stability)
-
-                    for (const station of processedStopsCache) {
-                        const dist = getDistanceFromLatLonInKm(lat, lon, station.lat, station.lon);
-                        if (dist < minDist) {
-                            minDist = dist;
-                            closest = station;
-                        }
-                    }
-
-                    if (closest) {
-                        resolvedStation = closest;
-                        resolvedUniqueId = closest.uniqueStopPointId;
-                    }
-                }
-
-                return {
-                    stop_id: String(resolvedUniqueId || stopId || `lat:${coords[1]}:lon:${coords[0]}`), // Fallback & Force String
-                    stop_name: props.stop_name,
-                    arrival_time: props.arrival_time,
-                    departure_time: props.departure_time,
-                    stop_sequence: props.stop_sequence,
-                    lat: coords[1],
-                    lon: coords[0],
-                    mainTrafficType: resolvedStation?.mainTrafficType || null,
-                    is_night: resolvedStation?.is_night || false
-                };
-            });
-
-            // Sort by sequence to ensure connectivity logic works
-            resolvedStops.sort((a, b) => (a.stop_sequence || 0) - (b.stop_sequence || 0));
-
-            return resolvedStops;
-        }
-
-        // Fallback for empty or different structure
-        return [];
+        const features = Array.isArray(response.data?.features) ? response.data.features : [];
+        return new Map(features
+            .map(feature => [String(feature?.properties?.stop_id || ''), feature])
+            .filter(([id]) => id)
+        );
     } catch (error) {
-        console.error(`[API] Fetch trip stops failed for ${url}: ${error.response ? error.response.status : error.message}`);
-        return [];
+        console.error(`[API] Fetch GTFS stops failed: ${error.response ? error.response.status : error.message}`);
+        return new Map();
     }
+}
+
+function buildTripStop(stopTime, apiStopFeatures) {
+    const stopId = stopTime?.stop_id ? String(stopTime.stop_id) : null;
+    if (!stopId) return null;
+
+    const cachedStop = findCachedStop(stopId);
+    const apiStop = apiStopFeatures.get(stopId);
+    const apiProps = apiStop?.properties || {};
+    const apiCoords = apiStop?.geometry?.coordinates || [];
+    const lon = cachedStop ? toFiniteNumber(cachedStop.lon) : toFiniteNumber(apiCoords[0]);
+    const lat = cachedStop ? toFiniteNumber(cachedStop.lat) : toFiniteNumber(apiCoords[1]);
+
+    if (lon === null || lat === null) return null;
+
+    return {
+        stop_id: stopId,
+        stop_name: cachedStop?.name || apiProps.stop_name || stopTime.stop_name || stopId,
+        arrival_time: stopTime.arrival_time,
+        departure_time: stopTime.departure_time,
+        stop_sequence: toFiniteNumber(stopTime.stop_sequence) ?? 0,
+        lat,
+        lon,
+        mainTrafficType: cachedStop?.mainTrafficType || null,
+        is_night: cachedStop?.is_night || false
+    };
+}
+
+export async function fetchTripPath(tripId) {
+    if (!API_KEY) throw new Error("API key is missing");
+
+    const normalizedTripId = String(tripId);
+    const cached = getFreshCache(tripPathCache, normalizedTripId);
+    if (cached) return cached;
+
+    const url = `${GOLEMIO_GTFS_TRIPS_URL}/${encodeURIComponent(normalizedTripId)}?includeStopTimes=true`;
+    const response = await axios.get(url, {
+        headers: getGolemioHeaders(),
+        timeout: 8000
+    });
+
+    const trip = response.data || {};
+    const stopTimes = Array.isArray(trip.stop_times)
+        ? [...trip.stop_times].sort((a, b) => (toFiniteNumber(a.stop_sequence) ?? 0) - (toFiniteNumber(b.stop_sequence) ?? 0))
+        : [];
+
+    if (!trip.shape_id) throw new Error(`No shape_id found for trip ${normalizedTripId}`);
+    if (stopTimes.length === 0) throw new Error(`No stop times found for trip ${normalizedTripId}`);
+
+    const missingStopIds = stopTimes
+        .map(stopTime => stopTime.stop_id)
+        .filter(stopId => stopId && !findCachedStop(stopId));
+    const apiStopFeatures = await fetchStopFeatures(missingStopIds);
+    const stops = stopTimes
+        .map(stopTime => buildTripStop(stopTime, apiStopFeatures))
+        .filter(Boolean);
+
+    if (stops.length === 0) throw new Error(`No resolvable stops found for trip ${normalizedTripId}`);
+
+    const data = {
+        tripId: trip.trip_id || normalizedTripId,
+        routeId: trip.route_id || null,
+        shapeId: trip.shape_id,
+        stops,
+        geometry: await fetchShapeGeometry(trip.shape_id),
+        source: 'golemio-gtfs'
+    };
+    return setFreshCache(tripPathCache, normalizedTripId, data);
 }
 
 // --- Socket Logic ---
@@ -926,64 +699,15 @@ io.on('connection', (socket) => {
 
             if (!tripId) return;
 
-            const stops = await fetchTripStops(tripId);
-            if (!stops || stops.length === 0) {
-                const clientTripId = (typeof tripData === 'object' && tripData.id) ? tripData.id : tripId;
-                socket.emit('tripPathError', { tripId: clientTripId, error: 'No trip path data found.' });
-                return;
-            }
-
-            // Derive Route ID and find geometry (e.g. 377_... -> L377)
-            let geometry = null;
-            try {
-                const rawLine = tripId.split('_')[0];
-                const routeId = `L${rawLine}`;
-
-                if (processedLinesCache && Array.isArray(processedLinesCache.features)) {
-                    // Find ALL features for this route (variants might be in separate features)
-                    const matchingFeatures = processedLinesCache.features.filter(f => {
-                        const props = f.properties || {};
-                        const rid = (props.route_id || props.ROUTE_ID || '').toString().toUpperCase();
-                        const rsn = (props.route_short_name || props.V_LINKA || '').toString();
-                        return rid === routeId || rsn === rawLine;
-                    });
-
-                    if (matchingFeatures.length > 0) {
-                        if (DEBUG_LOGS) console.log(`[API] Found ${matchingFeatures.length} geometry features for linka ${rawLine}`);
-
-                        // Collect all segments from all matching features
-                        let allSegments = [];
-                        matchingFeatures.forEach(f => {
-                            if (f.geometry.type === 'LineString') {
-                                allSegments.push(f.geometry.coordinates);
-                            } else if (f.geometry.type === 'MultiLineString') {
-                                allSegments.push(...f.geometry.coordinates);
-                            }
-                        });
-
-                        geometry = {
-                            type: 'MultiLineString',
-                            coordinates: allSegments
-                        };
-                    }
-                }
-            } catch (e) {
-                console.error('[API] Error deriving route geometry:', e);
-            }
-
-            // Apply spatial filter to keep only relevant segments
-            if (geometry && stops && stops.length > 0) {
-                geometry = filterGeometry(geometry, stops);
-            }
-
             // Return correct ID context for client
             const clientTripId = (typeof tripData === 'object' && tripData.id) ? tripData.id : tripId;
+            const path = await fetchTripPath(tripId);
 
-            socket.emit('tripPathData', { tripId: clientTripId, stops, geometry });
+            socket.emit('tripPathData', { ...path, tripId: clientTripId });
         } catch (err) {
             console.error('[SOCKET] Error in getTripPath:', err);
             const clientTripId = (typeof tripData === 'object' && tripData.id) ? tripData.id : 'unknown';
-            socket.emit('tripPathError', { tripId: clientTripId, error: 'Internal server error fetching trip path.' });
+            socket.emit('tripPathError', { tripId: clientTripId, error: err.message || 'Internal server error fetching trip path.' });
         }
     });
 });
@@ -1063,8 +787,9 @@ function startPolling(stopId) {
 }
 
 // --- Start Server ---
-// --- Start Server ---
-server.listen(PORT, '0.0.0.0', () => {
-    initCaches();
-    updateStatusUI();
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+    server.listen(PORT, '0.0.0.0', () => {
+        initCaches();
+        updateStatusUI();
+    });
+}
