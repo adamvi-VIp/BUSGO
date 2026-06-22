@@ -177,6 +177,8 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
   const activeTripStartedTsRef = useRef(0);
   const metroLinesRef = useRef(metroLines);
   const routeShortNameRef = useRef(routeShortName);
+  const latestUserLocationRef = useRef(userLocation);
+  latestUserLocationRef.current = userLocation;
 
   useEffect(() => {
     metroLinesRef.current = metroLines;
@@ -407,7 +409,7 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
         });
 
         // User location
-        map.addSource('user', { type: 'geojson', data: userToGeoJSON(userLocation) });
+        map.addSource('user', { type: 'geojson', data: userToGeoJSON(latestUserLocationRef.current) });
         map.addLayer({
           id: 'user-location',
           type: 'circle',
