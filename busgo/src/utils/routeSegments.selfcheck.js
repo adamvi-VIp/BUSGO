@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { splitLineByProgress } from './routeSegments.js';
+import { snapVehicleToRoute, splitLineByProgress } from './routeSegments.js';
 
 const geometry = {
   type: 'LineString',
@@ -12,8 +12,18 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  snapVehicleToRoute(geometry, [0, 10, 20], { shapeDistTraveled: 15 }).coordinates,
+  [15, 0]
+);
+
+assert.deepEqual(
   splitLineByProgress(geometry, null, { coordinates: [4, 3] }).past.coordinates,
   [[0, 0], [4, 0]]
+);
+
+assert.deepEqual(
+  snapVehicleToRoute(geometry, null, { coordinates: [4, 3] }).coordinates,
+  [4, 0]
 );
 
 assert.deepEqual(

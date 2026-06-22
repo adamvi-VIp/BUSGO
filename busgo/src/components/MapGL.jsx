@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import busIcon from '../assets/bus-icon.png';
+import busTopIcon from '../assets/Bus_from_top.png';
 import busStationBoxIcon from '../assets/busstationbox.png';
 import stationBoxIcon from '../assets/stationbox.png';
 import nightIcon from '../assets/night-icon.png';
@@ -25,7 +26,7 @@ import trainIconDimmed from '../assets/train-icon-dimmed.png';
 import ferryIconDimmed from '../assets/ferry-icon-dimmed.png';
 import trolleybusIconDimmed from '../assets/trolleybus-icon-dimmed.png';
 import nightIconDimmed from '../assets/night-icon-dimmed.png';
-import { splitLineByProgress } from '../utils/routeSegments.js';
+import { snapVehicleToRoute, splitLineByProgress } from '../utils/routeSegments.js';
 
 const DEFAULT_CENTER = [14.4378, 50.0755]; // Prague
 const DEFAULT_ZOOM = 16;
@@ -35,11 +36,15 @@ function lineFeature(geometry = EMPTY_LINE, properties = {}) {
   return { type: 'Feature', geometry, properties };
 }
 
-function vehicleToGeoJSON(position) {
+function vehicleToGeoJSON(position, routeGeometry, routeShapeDistances) {
+  const snapped = snapVehicleToRoute(routeGeometry, routeShapeDistances, position);
   return {
     type: 'FeatureCollection',
-    features: position?.coordinates
-      ? [lineFeature({ type: 'Point', coordinates: position.coordinates }, { bearing: position.bearing || 0 })]
+    features: snapped?.coordinates
+      ? [lineFeature({ type: 'Point', coordinates: snapped.coordinates }, {
+        bearing: snapped.bearing || 0,
+        isApproximate: snapped.isApproximate === true
+      })]
       : []
   };
 }
@@ -250,8 +255,8 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
 
     map.on('load', async () => {
       try {
-        const loadImage = (name, url) => new Promise((resolve) => {
-          const img = new Image(48, 48); // Standardize to 48x48 for all, including SVGs
+        const loadImage = (name, url, width = 48, height = 48) => new Promise((resolve) => {
+          const img = new Image(width, height); // Standardize station icons; vehicle keeps its tall aspect.
           img.crossOrigin = 'anonymous';
           img.src = url;
           img.onload = () => { if (!map.hasImage(name)) map.addImage(name, img); resolve(); };
@@ -260,6 +265,7 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
 
         await Promise.all([
           loadImage('bus-icon', busIcon),
+          loadImage('vehicle-icon', busTopIcon, 40, 80),
           loadImage('selected-station-box', busStationBoxIcon),
           loadImage('station-icon', stationBoxIcon),
           loadImage('night-icon', nightIcon),
@@ -372,21 +378,29 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
           }
         });
 
-        map.addSource('live-bus', { type: 'geojson', data: vehicleToGeoJSON(tripVehiclePosition) });
+        map.addSource('live-bus', { type: 'geojson', data: vehicleToGeoJSON(tripVehiclePosition, routeGeometry, routeShapeDistances) });
         map.addLayer({
           id: 'live-bus-layer',
           type: 'symbol',
           source: 'live-bus',
           layout: {
-            'icon-image': 'bus-icon',
+            'icon-image': 'vehicle-icon',
             'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.65, 16, 1.15],
             'icon-allow-overlap': true,
             'icon-ignore-placement': true,
             'icon-rotate': ['get', 'bearing'],
-            'icon-rotation-alignment': 'map'
+            'icon-rotation-alignment': 'map',
+            'text-field': ['case', ['boolean', ['get', 'isApproximate'], false], 'Approx.', ''],
+            'text-size': 11,
+            'text-offset': [0, 2.7],
+            'text-allow-overlap': true,
+            'text-ignore-placement': true
           },
           paint: {
-            'icon-opacity': 1
+            'icon-opacity': 1,
+            'text-color': '#f8fafc',
+            'text-halo-color': '#111827',
+            'text-halo-width': 1.5
           }
         });
 
@@ -637,8 +651,8 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
     const map = mapRef.current;
     if (!map) return;
     const src = map.getSource && map.getSource('live-bus');
-    if (src && src.setData) src.setData(vehicleToGeoJSON(tripVehiclePosition));
-  }, [tripVehiclePosition]);
+    if (src && src.setData) src.setData(vehicleToGeoJSON(tripVehiclePosition, routeGeometry, routeShapeDistances));
+  }, [tripVehiclePosition, routeGeometry, routeShapeDistances]);
 
   useEffect(() => {
     const map = mapRef.current;

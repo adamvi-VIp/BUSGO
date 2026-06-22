@@ -464,6 +464,7 @@ function App() {
     const [tripRouteShortName, setTripRouteShortName] = useState(null);
     const [metroLines, setMetroLines] = useState(null);
     const [activeTripId, setActiveTripId] = useState(null); // ID of the currently selected bus trip
+    const [activeTripContext, setActiveTripContext] = useState(null);
     const activeTripIdRef = useRef(null);
     const selectedStopDataRef = useRef(null);
 
@@ -514,7 +515,23 @@ function App() {
         setTripVehiclePosition(null);
         setTripRouteColor(null);
         setTripRouteShortName(null);
+        setActiveTripContext(null);
     }, []);
+
+    const buildTripContext = (arrival) => {
+        const tripId = arrival?.trip?.gtfs_trip_id || arrival?.trip?.id;
+        const clientTripId = arrival?.trip?.id || tripId;
+        const anchorStop = selectedStopDataRef.current || selectedStop;
+        const delaySeconds = Number(arrival?.delay?.seconds);
+        return {
+            tripId,
+            clientTripId,
+            anchorStopId: arrival?.stop?.id || getStopPrimaryId(anchorStop) || null,
+            anchorPredictedDeparture: arrival?.departure_timestamp?.predicted || null,
+            anchorScheduledDeparture: arrival?.departure_timestamp?.scheduled || null,
+            delaySeconds: Number.isFinite(delaySeconds) ? delaySeconds : null
+        };
+    };
 
     useEffect(() => {
         activeTripIdRef.current = activeTripId;
@@ -906,6 +923,7 @@ function App() {
         };
 
         const handleTripPathData = (data) => {
+            if (data?.tripId && activeTripIdRef.current && String(data.tripId) !== String(activeTripIdRef.current)) return;
             if (data && Array.isArray(data.stops)) {
                 console.log('Received trip path stops:', data.stops.length);
 
@@ -952,7 +970,7 @@ function App() {
                 setTripShapeDistances(Array.isArray(data.shapeDistances) ? data.shapeDistances : null);
                 setTripRouteColor(data.routeColor || null);
                 setTripRouteShortName(data.routeShortName || null);
-                setTripVehiclePosition(null);
+                setTripVehiclePosition(data.vehiclePosition || null);
 
                 // Ensure activeTripId is set (robustness for direct URL entry or deep links later)
                 if (data.tripId) {
@@ -1074,13 +1092,14 @@ function App() {
             return undefined;
         }
 
-        socket.emit('getTripVehiclePosition', activeTripId);
+        const tripPayload = activeTripContext || activeTripId;
+        socket.emit('getTripVehiclePosition', tripPayload);
         const id = setInterval(() => {
-            socket.emit('getTripVehiclePosition', activeTripId);
+            socket.emit('getTripVehiclePosition', tripPayload);
         }, 5000);
 
         return () => clearInterval(id);
-    }, [activeTripId]);
+    }, [activeTripId, activeTripContext]);
 
     useEffect(() => {
         if (!hasFetchedForLocation.current) {
@@ -1625,16 +1644,18 @@ function App() {
                     error={errors.find(e => e && typeof e === 'object' && stopMatchesId(selectedStop, e.stopId))}
                     onDepartureClick={(arrival) => {
                         if (arrival && arrival.trip) {
-                            if (activeTripId === arrival.trip.id) {
+                            const tripContext = buildTripContext(arrival);
+                            if (activeTripId === tripContext.clientTripId) {
                                 // Toggle OFF
                                 console.log('Departure clicked (Toggle ID match), clearing focus');
                                 clearTripFocus();
                             } else {
                                 // Toggle ON
-                                console.log('Departure clicked, requesting path for:', arrival.trip.id);
+                                console.log('Departure clicked, requesting path for:', tripContext.tripId);
                                 setIsPanelExpanded(false); // Close menu on trip select
-                                activeTripIdRef.current = arrival.trip.id;
-                                setActiveTripId(arrival.trip.id);
+                                activeTripIdRef.current = tripContext.clientTripId;
+                                setActiveTripId(tripContext.clientTripId);
+                                setActiveTripContext(tripContext);
                                 setTripRouteStops(null);
                                 setTripRouteGeometry(null); // Reset until new one arrives
                                 setTripShapeDistances(null);
@@ -1643,8 +1664,7 @@ function App() {
                                 setTripRouteColor(null);
                                 setTripRouteShortName(null);
                                 setIsLoadingTripPath(true);
-                                // Send full trip object to helper server resolve IDs
-                                socket.emit('getTripPath', arrival.trip);
+                                socket.emit('getTripPath', tripContext);
                             }
                         }
                     }}

@@ -458,6 +458,88 @@ function toFiniteNumber(value) {
     return Number.isFinite(number) ? number : null;
 }
 
+function parseTimestamp(value) {
+    if (!value) return null;
+    if (typeof value === 'number') return value < 1000000000000 ? value * 1000 : value;
+    const parsed = new Date(value).getTime();
+    if (!Number.isNaN(parsed)) return parsed;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? (numeric < 1000000000000 ? numeric * 1000 : numeric) : null;
+}
+
+function parseGtfsTime(value) {
+    const match = String(value || '').match(/^(\d+):(\d{2}):(\d{2})/);
+    if (!match) return null;
+    return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+}
+
+function bearingFrom(a, b) {
+    const angle = Math.atan2(b[0] - a[0], b[1] - a[1]) * 180 / Math.PI;
+    return (angle + 360) % 360;
+}
+
+function stopMatchesId(stop, stopId) {
+    if (!stop || !stopId) return false;
+    const normalized = String(stopId);
+    return String(stop.stop_id || '') === normalized ||
+        String(stop.gtfsId || '') === normalized ||
+        String(stop.uniqueStopPointId || '') === normalized ||
+        (Array.isArray(stop.gtfsIds) && stop.gtfsIds.map(String).includes(normalized));
+}
+
+function pointAtShapeDistance(geometry, distances, progress) {
+    const coords = Array.isArray(geometry?.coordinates) ? geometry.coordinates : [];
+    const values = Array.isArray(distances) ? distances.map(Number) : [];
+    const distance = Number(progress);
+    if (coords.length < 2 || values.length !== coords.length || values.some(v => !Number.isFinite(v)) || !Number.isFinite(distance)) return null;
+    if (distance <= values[0]) return { coordinates: coords[0], bearing: bearingFrom(coords[0], coords[1]) };
+
+    for (let i = 0; i < values.length - 1; i += 1) {
+        if (distance > values[i + 1]) continue;
+        const span = values[i + 1] - values[i];
+        const ratio = span > 0 ? Math.max(0, Math.min(1, (distance - values[i]) / span)) : 0;
+        const a = coords[i];
+        const b = coords[i + 1];
+        return {
+            coordinates: [a[0] + (b[0] - a[0]) * ratio, a[1] + (b[1] - a[1]) * ratio],
+            bearing: bearingFrom(a, b)
+        };
+    }
+
+    return {
+        coordinates: coords[coords.length - 1],
+        bearing: bearingFrom(coords[coords.length - 2], coords[coords.length - 1])
+    };
+}
+
+function projectStopDistance(stop, geometry, distances) {
+    const explicit = toFiniteNumber(stop.shapeDistTraveled);
+    if (explicit !== null) return explicit;
+
+    const coords = Array.isArray(geometry?.coordinates) ? geometry.coordinates : [];
+    const values = Array.isArray(distances) ? distances.map(Number) : [];
+    if (coords.length < 2 || values.length !== coords.length || values.some(v => !Number.isFinite(v))) return null;
+
+    const point = [toFiniteNumber(stop.lon), toFiniteNumber(stop.lat)];
+    if (point.some(v => v === null)) return null;
+
+    let best = null;
+    for (let i = 0; i < coords.length - 1; i += 1) {
+        const a = coords[i];
+        const b = coords[i + 1];
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        const len2 = dx * dx + dy * dy;
+        const ratio = len2 ? Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / len2)) : 0;
+        const projected = [a[0] + dx * ratio, a[1] + dy * ratio];
+        const dist2 = (point[0] - projected[0]) ** 2 + (point[1] - projected[1]) ** 2;
+        if (!best || dist2 < best.dist2) {
+            best = { dist2, distance: values[i] + (values[i + 1] - values[i]) * ratio };
+        }
+    }
+    return best?.distance ?? null;
+}
+
 export function shapeFeaturesToPath(shapeData) {
     const features = Array.isArray(shapeData?.features) ? shapeData.features : [];
     const points = features
@@ -596,6 +678,7 @@ function buildTripStop(stopTime, apiStopFeatures) {
         arrival_time: stopTime.arrival_time,
         departure_time: stopTime.departure_time,
         stop_sequence: toFiniteNumber(stopTime.stop_sequence) ?? 0,
+        shapeDistTraveled: toFiniteNumber(stopTime.shape_dist_traveled ?? stopTime.shapeDistTraveled),
         lat,
         lon,
         platform: cachedStop?.platform || apiProps.platform_code || null,
@@ -653,12 +736,89 @@ export async function fetchTripPath(tripId) {
     return setFreshCache(tripPathCache, normalizedTripId, data);
 }
 
-function resolveTripIdContext(tripData) {
+export function estimateTripVehiclePosition(path, context, nowMs = Date.now()) {
+    const stops = Array.isArray(path?.stops) ? path.stops : [];
+    const anchorStop = stops.find(stop => stopMatchesId(stop, context?.anchorStopId));
+    const anchorRealMs = parseTimestamp(context?.anchorPredictedDeparture) ??
+        (() => {
+            const scheduled = parseTimestamp(context?.anchorScheduledDeparture);
+            const delaySeconds = toFiniteNumber(context?.delaySeconds) ?? 0;
+            return scheduled === null ? null : scheduled + delaySeconds * 1000;
+        })();
+
+    if (!anchorStop || anchorRealMs === null) return null;
+
+    let dayOffset = 0;
+    let previousTime = null;
+    const timedStops = stops
+        .map(stop => {
+            const rawTime = parseGtfsTime(stop.departure_time || stop.arrival_time);
+            if (rawTime === null) return null;
+            while (previousTime !== null && rawTime + dayOffset <= previousTime) dayOffset += 86400;
+            const time = rawTime + dayOffset;
+            previousTime = time;
+            return {
+                ...stop,
+                time,
+                distance: projectStopDistance(stop, path.geometry, path.shapeDistances)
+            };
+        })
+        .filter(stop => stop && stop.distance !== null);
+
+    if (timedStops.length === 0) return null;
+    const timedAnchor = timedStops.find(stop => stopMatchesId(stop, context.anchorStopId));
+    if (!timedAnchor) return null;
+
+    const targetTime = timedAnchor.time + (nowMs - anchorRealMs) / 1000;
+    let previous = timedStops[0];
+    let next = timedStops[timedStops.length - 1];
+
+    if (targetTime <= timedStops[0].time) {
+        next = timedStops[0];
+    } else if (targetTime >= timedStops[timedStops.length - 1].time) {
+        previous = timedStops[timedStops.length - 1];
+    } else {
+        for (let i = 0; i < timedStops.length - 1; i += 1) {
+            if (targetTime <= timedStops[i + 1].time) {
+                previous = timedStops[i];
+                next = timedStops[i + 1];
+                break;
+            }
+        }
+    }
+
+    const span = next.time - previous.time;
+    const ratio = span > 0 ? Math.max(0, Math.min(1, (targetTime - previous.time) / span)) : 0;
+    const shapeDistTraveled = previous.distance + (next.distance - previous.distance) * ratio;
+    const point = pointAtShapeDistance(path.geometry, path.shapeDistances, shapeDistTraveled);
+    if (!point) return null;
+
+    return {
+        coordinates: point.coordinates,
+        bearing: point.bearing,
+        shapeDistTraveled,
+        lastStopId: previous.stop_id || previous.gtfsId || null,
+        lastStopSequence: previous.stop_sequence ?? null,
+        nextStopId: next.stop_id || next.gtfsId || null,
+        nextStopSequence: next.stop_sequence ?? null,
+        originTimestamp: new Date(nowMs).toISOString(),
+        tracking: false,
+        source: 'estimated',
+        isApproximate: true,
+        anchorStopId: context.anchorStopId
+    };
+}
+
+function resolveTripContext(tripData) {
     if (typeof tripData === 'object' && tripData !== null) {
-        const tripId = tripData.gtfs_trip_id || tripData.id;
+        const tripId = tripData.tripId || tripData.gtfs_trip_id || tripData.id;
         return {
             tripId,
-            clientTripId: tripData.id || tripId
+            clientTripId: tripData.clientTripId || tripData.id || tripId,
+            anchorStopId: tripData.anchorStopId || null,
+            anchorPredictedDeparture: tripData.anchorPredictedDeparture || null,
+            anchorScheduledDeparture: tripData.anchorScheduledDeparture || null,
+            delaySeconds: toFiniteNumber(tripData.delaySeconds)
         };
     }
     return { tripId: tripData, clientTripId: tripData };
@@ -679,7 +839,7 @@ async function fetchVehiclePositions() {
     return features;
 }
 
-async function fetchTripVehiclePosition(tripId) {
+async function fetchLiveTripVehiclePosition(tripId) {
     if (!tripId) return null;
     const features = await fetchVehiclePositions();
     const feature = features.find(item => String(item?.properties?.trip?.gtfs?.trip_id || '') === String(tripId));
@@ -700,8 +860,25 @@ async function fetchTripVehiclePosition(tripId) {
         nextStopId: lastPosition.next_stop?.id || null,
         nextStopSequence: toFiniteNumber(lastPosition.next_stop?.sequence),
         originTimestamp: lastPosition.origin_timestamp || null,
-        tracking: lastPosition.tracking === true
+        tracking: lastPosition.tracking === true,
+        source: 'live',
+        isApproximate: false
     };
+}
+
+async function fetchTripVehiclePosition(tripData, path = null) {
+    const context = resolveTripContext(tripData);
+    if (!context.tripId) return null;
+
+    try {
+        const live = await fetchLiveTripVehiclePosition(context.tripId);
+        if (live) return live;
+    } catch (error) {
+        console.error(`[API] Vehicle position fetch failed for ${context.tripId}: ${error.message}`);
+    }
+
+    const tripPath = path || await fetchTripPath(context.tripId);
+    return estimateTripVehiclePosition(tripPath, context);
 }
 
 // --- Socket Logic ---
@@ -811,15 +988,17 @@ io.on('connection', (socket) => {
 
 
     socket.on('getTripPath', async (tripData) => {
-        const { tripId, clientTripId } = resolveTripIdContext(tripData);
+        const context = resolveTripContext(tripData);
+        const { tripId, clientTripId } = context;
         try {
             if (typeof tripData === 'object' && tripData !== null && DEBUG_LOGS) console.log(`[DEBUG] Trip Object Keys: ${Object.keys(tripData).join(', ')}`);
 
             if (!tripId) return;
 
             const path = await fetchTripPath(tripId);
+            const position = await fetchTripVehiclePosition(context, path);
 
-            socket.emit('tripPathData', { ...path, tripId: clientTripId });
+            socket.emit('tripPathData', { ...path, tripId: clientTripId, vehiclePosition: position });
         } catch (err) {
             console.error('[SOCKET] Error in getTripPath:', err);
             socket.emit('tripPathError', { tripId: clientTripId || 'unknown', error: err.message || 'Internal server error fetching trip path.' });
@@ -827,9 +1006,9 @@ io.on('connection', (socket) => {
     });
 
     socket.on('getTripVehiclePosition', async (tripData) => {
-        const { tripId, clientTripId } = resolveTripIdContext(tripData);
+        const { clientTripId } = resolveTripContext(tripData);
         try {
-            const position = await fetchTripVehiclePosition(tripId);
+            const position = await fetchTripVehiclePosition(tripData);
             socket.emit('tripVehiclePositionData', { tripId: clientTripId, position });
         } catch (err) {
             console.error('[SOCKET] Error in getTripVehiclePosition:', err);

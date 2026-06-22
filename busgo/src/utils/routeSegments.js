@@ -15,6 +15,11 @@ function line(coords) {
   return coords.length >= 2 ? { type: 'LineString', coordinates: coords } : EMPTY_LINE;
 }
 
+function bearingFrom(a, b) {
+  const angle = Math.atan2(b[0] - a[0], b[1] - a[1]) * 180 / Math.PI;
+  return (angle + 360) % 360;
+}
+
 function splitAt(coords, segmentIndex, point) {
   const splitPoint = asCoord(point);
   if (!splitPoint || segmentIndex < 0) {
@@ -31,13 +36,13 @@ function splitAt(coords, segmentIndex, point) {
   return { past: line(past), future: line(future) };
 }
 
-function splitByDistance(coords, distances, progress) {
+function pointByDistance(coords, distances, progress) {
   const distance = Number(progress);
   if (!Number.isFinite(distance) || !Array.isArray(distances) || distances.length !== coords.length) return null;
 
   const values = distances.map(Number);
   if (values.some(v => !Number.isFinite(v))) return null;
-  if (distance <= values[0]) return splitAt(coords, 0, coords[0]);
+  if (distance <= values[0]) return { coordinates: coords[0], segmentIndex: 0, bearing: bearingFrom(coords[0], coords[1]) };
 
   for (let i = 0; i < values.length - 1; i += 1) {
     const start = values[i];
@@ -48,13 +53,26 @@ function splitByDistance(coords, distances, progress) {
     const ratio = span > 0 ? Math.max(0, Math.min(1, (distance - start) / span)) : 0;
     const a = coords[i];
     const b = coords[i + 1];
-    return splitAt(coords, i, [
-      a[0] + (b[0] - a[0]) * ratio,
-      a[1] + (b[1] - a[1]) * ratio
-    ]);
+    return {
+      coordinates: [
+        a[0] + (b[0] - a[0]) * ratio,
+        a[1] + (b[1] - a[1]) * ratio
+      ],
+      segmentIndex: i,
+      bearing: bearingFrom(a, b)
+    };
   }
 
-  return splitAt(coords, coords.length - 2, coords[coords.length - 1]);
+  return {
+    coordinates: coords[coords.length - 1],
+    segmentIndex: coords.length - 2,
+    bearing: bearingFrom(coords[coords.length - 2], coords[coords.length - 1])
+  };
+}
+
+function splitByDistance(coords, distances, progress) {
+  const point = pointByDistance(coords, distances, progress);
+  return point ? splitAt(coords, point.segmentIndex, point.coordinates) : null;
 }
 
 function projectPointToSegment(point, a, b) {
@@ -67,7 +85,7 @@ function projectPointToSegment(point, a, b) {
   return { projected, dist2 };
 }
 
-function splitByProjection(coords, position) {
+function pointByProjection(coords, position) {
   const point = asCoord(position);
   if (!point || coords.length < 2) return null;
 
@@ -77,7 +95,32 @@ function splitByProjection(coords, position) {
     const candidate = projectPointToSegment(point, coords[i], coords[i + 1]);
     if (!best || candidate.dist2 < best.dist2) best = { ...candidate, segmentIndex: i };
   }
-  return best ? splitAt(coords, best.segmentIndex, best.projected) : null;
+  return best ? {
+    coordinates: best.projected,
+    segmentIndex: best.segmentIndex,
+    bearing: bearingFrom(coords[best.segmentIndex], coords[best.segmentIndex + 1])
+  } : null;
+}
+
+function splitByProjection(coords, position) {
+  const point = pointByProjection(coords, position);
+  return point ? splitAt(coords, point.segmentIndex, point.coordinates) : null;
+}
+
+export function snapVehicleToRoute(geometry, distances, vehiclePosition) {
+  const coords = (geometry?.coordinates || []).map(asCoord).filter(Boolean);
+  if (coords.length < 2 || !vehiclePosition) return vehiclePosition || null;
+
+  const point = pointByDistance(coords, distances, vehiclePosition.shapeDistTraveled) ||
+    pointByProjection(coords, vehiclePosition.coordinates);
+  if (!point) return vehiclePosition;
+
+  const bearing = Number(vehiclePosition.bearing);
+  return {
+    ...vehiclePosition,
+    coordinates: point.coordinates,
+    bearing: Number.isFinite(bearing) ? bearing : point.bearing
+  };
 }
 
 export function splitLineByProgress(geometry, distances, vehiclePosition) {
