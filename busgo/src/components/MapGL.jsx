@@ -31,7 +31,6 @@ import { snapVehicleToRoute, splitLineByProgress } from '../utils/routeSegments.
 const DEFAULT_CENTER = [14.4378, 50.0755]; // Prague
 const DEFAULT_ZOOM = 16;
 const EMPTY_LINE = { type: 'LineString', coordinates: [] };
-const ACTIVE_VEHICLE_FOLLOW_IDLE_MS = 8000;
 const ACTIVE_VEHICLE_MIN_RECENTER_DELTA = 0.00008;
 
 function lineFeature(geometry = EMPTY_LINE, properties = {}) {
@@ -440,13 +439,20 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
 
 
         // Click handlers are managed by a top-level effect; removed nested hook.
+        const markManualMove = (event) => {
+          if (event && event.originalEvent) lastManualMoveTsRef.current = Date.now();
+        };
+        map.on('dragstart', markManualMove);
+        map.on('zoomstart', markManualMove);
+        map.on('rotatestart', markManualMove);
+        map.on('pitchstart', markManualMove);
+
         // Movement monitoring and throttled fetch
         map.on('moveend', () => {
           if (programmaticMoveRef && programmaticMoveRef.current) {
             programmaticMoveRef.current = false;
             return;
           }
-          lastManualMoveTsRef.current = Date.now();
           const c = map.getCenter();
           if (!lastCenterRef.current || Math.abs(lastCenterRef.current.lat - c.lat) > 0.002 || Math.abs(lastCenterRef.current.lng - c.lng) > 0.002) {
             lastCenterRef.current = c;
@@ -541,7 +547,7 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
     lastFocusedTripIdRef.current = null;
   }, [activeTripId]);
 
-  // Follow active vehicle updates while the user is idle; manual pan/zoom pauses following briefly.
+  // Follow the active vehicle until the user manually moves the map.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -549,20 +555,19 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
       lastFocusedTripIdRef.current = null;
       return;
     }
+    if (lastManualMoveTsRef.current && lastManualMoveTsRef.current >= activeTripStartedTsRef.current) return;
 
     const center = snapVehicleToRoute(routeGeometry, routeShapeDistances, tripVehiclePosition)?.coordinates;
     if (!center) return;
-    const now = Date.now();
-    const idleSinceManualMove = !lastManualMoveTsRef.current || now - lastManualMoveTsRef.current >= ACTIVE_VEHICLE_FOLLOW_IDLE_MS;
-    const noManualMoveAfterActivation = !lastManualMoveTsRef.current || lastManualMoveTsRef.current < activeTripStartedTsRef.current;
-    if (!idleSinceManualMove && !noManualMoveAfterActivation) return;
 
     const current = map.getCenter();
     if (
-      lastFocusedTripIdRef.current === activeTripId &&
       Math.abs(current.lng - center[0]) < ACTIVE_VEHICLE_MIN_RECENTER_DELTA &&
       Math.abs(current.lat - center[1]) < ACTIVE_VEHICLE_MIN_RECENTER_DELTA
-    ) return;
+    ) {
+      lastFocusedTripIdRef.current = activeTripId;
+      return;
+    }
 
     try {
       if (programmaticMoveRef) programmaticMoveRef.current = true;
