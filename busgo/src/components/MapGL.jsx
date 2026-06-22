@@ -396,16 +396,14 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
             'icon-rotation-alignment': 'map',
             'text-field': ['case', ['boolean', ['get', 'isApproximate'], false], 'approx', ''],
             'text-size': 9,
-            'text-offset': [0, 3.25],
+            'text-offset': [0, 4.15],
             'text-letter-spacing': 0.02,
             'text-allow-overlap': true,
             'text-ignore-placement': true
           },
           paint: {
             'icon-opacity': 1,
-            'text-color': '#a1a8b3',
-            'text-halo-color': '#05070c',
-            'text-halo-width': 1.4
+            'text-color': '#a1a8b3'
           }
         });
 
