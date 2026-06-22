@@ -31,6 +31,8 @@ import { snapVehicleToRoute, splitLineByProgress } from '../utils/routeSegments.
 const DEFAULT_CENTER = [14.4378, 50.0755]; // Prague
 const DEFAULT_ZOOM = 16;
 const EMPTY_LINE = { type: 'LineString', coordinates: [] };
+const ACTIVE_VEHICLE_FOLLOW_IDLE_MS = 8000;
+const ACTIVE_VEHICLE_MIN_RECENTER_DELTA = 0.00008;
 
 function lineFeature(geometry = EMPTY_LINE, properties = {}) {
   return { type: 'Feature', geometry, properties };
@@ -172,6 +174,8 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
   const stationClickHandlerRef = React.useRef(null);
   const initialUserMoveDoneRef = useRef(false);
   const lastFocusedTripIdRef = useRef(null);
+  const lastManualMoveTsRef = useRef(0);
+  const activeTripStartedTsRef = useRef(0);
   const metroLinesRef = useRef(metroLines);
   const routeShortNameRef = useRef(routeShortName);
 
@@ -443,6 +447,7 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
             programmaticMoveRef.current = false;
             return;
           }
+          lastManualMoveTsRef.current = Date.now();
           const c = map.getCenter();
           if (!lastCenterRef.current || Math.abs(lastCenterRef.current.lat - c.lat) > 0.002 || Math.abs(lastCenterRef.current.lng - c.lng) > 0.002) {
             lastCenterRef.current = c;
@@ -532,7 +537,12 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
 
   }, [selectedStop, highlightedStopIds, tripStops, tripVehiclePosition]); // Added highlightedStopIds dependency
 
-  // Focus selected trip once on the live vehicle, then leave user pan/zoom alone.
+  useEffect(() => {
+    activeTripStartedTsRef.current = activeTripId ? Date.now() : 0;
+    lastFocusedTripIdRef.current = null;
+  }, [activeTripId]);
+
+  // Follow active vehicle updates while the user is idle; manual pan/zoom pauses following briefly.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -541,18 +551,28 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
       return;
     }
 
-    if (lastFocusedTripIdRef.current === activeTripId) return;
-    const center = tripVehiclePosition?.coordinates;
+    const center = snapVehicleToRoute(routeGeometry, routeShapeDistances, tripVehiclePosition)?.coordinates;
     if (!center) return;
+    const now = Date.now();
+    const idleSinceManualMove = !lastManualMoveTsRef.current || now - lastManualMoveTsRef.current >= ACTIVE_VEHICLE_FOLLOW_IDLE_MS;
+    const noManualMoveAfterActivation = !lastManualMoveTsRef.current || lastManualMoveTsRef.current < activeTripStartedTsRef.current;
+    if (!idleSinceManualMove && !noManualMoveAfterActivation) return;
+
+    const current = map.getCenter();
+    if (
+      lastFocusedTripIdRef.current === activeTripId &&
+      Math.abs(current.lng - center[0]) < ACTIVE_VEHICLE_MIN_RECENTER_DELTA &&
+      Math.abs(current.lat - center[1]) < ACTIVE_VEHICLE_MIN_RECENTER_DELTA
+    ) return;
 
     try {
       if (programmaticMoveRef) programmaticMoveRef.current = true;
-      map.flyTo({ center, zoom: 16.5, duration: 900, essential: true });
+      map.flyTo({ center, zoom: Math.max(map.getZoom(), 16.5), duration: 900, essential: true });
       lastFocusedTripIdRef.current = activeTripId;
     } catch (e) {
       console.error('[MapGL] Error focusing live vehicle:', e);
     }
-  }, [activeTripId, tripVehiclePosition, programmaticMoveRef]);
+  }, [activeTripId, tripVehiclePosition, routeGeometry, routeShapeDistances, programmaticMoveRef]);
 
   // Stop click handlers effect
   useEffect(() => {
