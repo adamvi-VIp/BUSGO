@@ -32,7 +32,8 @@ const BottomMenu = ({
 
     // Helper to get collapsed Y position
     const getCollapsedY = () => {
-        const vh = parseFloat(document.documentElement.style.getPropertyValue('--vh')) || window.innerHeight * 0.01;
+        const vh = parseFloat(document.documentElement.style.getPropertyValue('--vh')) ||
+            ((window.visualViewport?.height || window.innerHeight) * 0.01);
         const currentWindowHeight = vh * 100;
         return currentWindowHeight - COLLAPSED_MARGIN;
     };
@@ -68,7 +69,8 @@ const BottomMenu = ({
     const VELOCITY_THRESHOLD = 0.5;
 
     // Derived values for interpolation
-    const vh = parseFloat(document.documentElement.style.getPropertyValue('--vh')) || window.innerHeight * 0.01;
+    const vh = parseFloat(document.documentElement.style.getPropertyValue('--vh')) ||
+        ((window.visualViewport?.height || window.innerHeight) * 0.01);
     const windowHeight = vh * 100;
     const collapsedY = getCollapsedY();
     const totalTravel = collapsedY - EXPANDED_Y;

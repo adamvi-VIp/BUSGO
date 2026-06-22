@@ -389,7 +389,7 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
           source: 'live-bus',
           layout: {
             'icon-image': 'vehicle-icon',
-            'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.65, 16, 1.15],
+            'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.55, 16, 1],
             'icon-allow-overlap': true,
             'icon-ignore-placement': true,
             'icon-rotate': ['get', 'bearing'],

@@ -1427,15 +1427,24 @@ function App() {
     // Mobile 100vh fix and layout readiness
     useEffect(() => {
         function setVh() {
-            document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
+            const viewportHeight = window.visualViewport?.height || window.innerHeight;
+            document.documentElement.style.setProperty('--vh', `${viewportHeight * 0.01}px`);
         }
         setVh();
+        const animationFrame = requestAnimationFrame(setVh);
+        const settleTimers = [250, 750, 1500].map((delay) => setTimeout(setVh, delay));
         setIsLayoutReady(true);
         window.addEventListener('resize', setVh);
         window.addEventListener('orientationchange', setVh);
+        window.visualViewport?.addEventListener('resize', setVh);
+        window.visualViewport?.addEventListener('scroll', setVh);
         return () => {
+            cancelAnimationFrame(animationFrame);
+            settleTimers.forEach(clearTimeout);
             window.removeEventListener('resize', setVh);
             window.removeEventListener('orientationchange', setVh);
+            window.visualViewport?.removeEventListener('resize', setVh);
+            window.visualViewport?.removeEventListener('scroll', setVh);
         };
     }, []);
 
@@ -1520,7 +1529,8 @@ function App() {
                 top: 0,
                 left: 0,
                 width: '100vw',
-                height: 'calc((var(--vh, 1vh) * 100) + env(safe-area-inset-bottom, 0px))',
+                height: '100dvh',
+                minHeight: 'calc((var(--vh, 1vh) * 100) + env(safe-area-inset-bottom, 0px))',
                 overflow: 'hidden',
                 WebkitOverflowScrolling: 'touch',
                 // Prevent iOS rubber banding
