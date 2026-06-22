@@ -394,17 +394,17 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
             'icon-ignore-placement': true,
             'icon-rotate': ['get', 'bearing'],
             'icon-rotation-alignment': 'map',
-            'text-field': ['case', ['boolean', ['get', 'isApproximate'], false], 'Approx.', ''],
-            'text-size': 11,
-            'text-offset': [0, 2.7],
+            'text-field': ['case', ['boolean', ['get', 'isApproximate'], false], 'approx.', ''],
+            'text-size': 10,
+            'text-offset': [0, 2.9],
             'text-allow-overlap': true,
             'text-ignore-placement': true
           },
           paint: {
             'icon-opacity': 1,
-            'text-color': '#f8fafc',
-            'text-halo-color': '#111827',
-            'text-halo-width': 1.5
+            'text-color': '#9ca3af',
+            'text-halo-color': '#0b1120',
+            'text-halo-width': 1.8
           }
         });
 
