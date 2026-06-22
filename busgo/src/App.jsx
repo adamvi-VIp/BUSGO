@@ -190,7 +190,7 @@ const Arrival = React.forwardRef(({ arrival, onDepartureClick, isActive }, ref) 
 
             <div className="flex items-center flex-shrink-0 w-[86px] justify-end mr-1 overflow-hidden">
                 <span
-                    className={`block w-full text-right text-xl font-extrabold tabular-nums whitespace-nowrap leading-none transition-none ${isDeparting ? 'text-orange-300' : 'text-white'}`}
+                    className={`block w-full text-right text-xl font-extrabold tabular-nums whitespace-nowrap leading-none transition-none ${isDeparting ? 'text-orange-600' : 'text-white'}`}
                     style={{ contain: 'layout paint' }}
                 >
                     {formattedTime !== 'N/A' && formattedTime !== null ? formattedTime : ''}
