@@ -93,6 +93,56 @@ function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
     return R * c;
 }
 
+function sameGeoPosition(a, b) {
+    return Number(a.lat) === Number(b.lat) && Number(a.lon) === Number(b.lon);
+}
+
+function smallerStopId(ids) {
+    return ids.map(String).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))[0];
+}
+
+function mergeStopIntoGroup(group, stop) {
+    group.gtfsIds = Array.from(new Set([...group.gtfsIds, ...stop.gtfsIds]));
+    group.gtfsId = smallerStopId(group.gtfsIds);
+    group.uniqueStopPointId = group.gtfsId;
+
+    const lineMap = new Map();
+    [...group.lines, ...stop.lines].forEach(l => {
+        const key = `${l.name}-${l.direction}-${l.direction2}`;
+        if (!lineMap.has(key)) lineMap.set(key, l);
+    });
+    group.lines = Array.from(lineMap.values());
+    group.is_night = group.is_night && stop.is_night;
+    if (!group.platform && stop.platform) group.platform = stop.platform;
+}
+
+export function groupStops(rawStops) {
+    const groupedStops = [];
+    const THRESHOLD_KM = 0.05; // 50 meters
+
+    for (const stop of rawStops) {
+        const group = groupedStops.find(g => {
+            // ponytail: exact coordinate collapse fixes unclickable overlaps; widen if API coords drift.
+            if (sameGeoPosition(stop, g)) return true;
+
+            const dist = getDistanceFromLatLonInKm(stop.lat, stop.lon, g.lat, g.lon);
+            const sharedId = stop.gtfsIds.some(id => g.gtfsIds.includes(id));
+            if (sharedId && dist < 0.001) return true;
+            if (stop.gtfsIds.length > 0 && g.gtfsIds.length > 0) return false;
+            if (dist >= THRESHOLD_KM) return false;
+
+            const n1 = stop.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            const n2 = g.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            return n1.includes(n2) || n2.includes(n1);
+        });
+
+        if (group) mergeStopIntoGroup(group, stop);
+        else groupedStops.push({ ...stop });
+    }
+
+    return groupedStops;
+}
+
 function formatTime(date) {
     return date.toTimeString().split(' ')[0];
 }
@@ -240,64 +290,7 @@ async function refreshStationsCache() {
                     };
                 });
 
-            // --- PROXIMITY GROUPING (±0.01m) ---
-            const groupedStops = [];
-            const THRESHOLD_KM = 0.05; // 50 meters (increased from 0.01m to deduplicate physical locations)
-
-            for (const stop of rawStops) {
-                // Find potential existing group:
-                // 1. SHARED GTFS ID + VERY STRICT PROXIMITY (1m)
-                // 2. Proximity (50m) + Name Match (Secondary)
-                let group = groupedStops.find(g => {
-                    const dist = getDistanceFromLatLonInKm(stop.lat, stop.lon, g.lat, g.lon);
-
-                    // Check for shared GTFS IDs intersection
-                    const sharedId = stop.gtfsIds.some(id => g.gtfsIds.includes(id));
-
-                    // User Request: "1m" threshold for shared ID merge 
-                    // This filters only exact API duplicates, preserving platforms that are distinct
-                    if (sharedId && dist < 0.001) return true;
-
-                    // STRICT MODE: If both have IDs but failed the strict merge above, 
-                    // assume they are distinct platforms (e.g. "Platform A" vs "Platform B" of same station).
-                    // Do NOT fall back to loose name/distance matching.
-                    if (stop.gtfsIds.length > 0 && g.gtfsIds.length > 0) return false;
-
-                    // Fallback to spatial naming check (only for stops WITHOUT rich IDs)
-                    if (dist >= THRESHOLD_KM) return false;
-
-                    // Name matching check
-                    const n1 = stop.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                    const n2 = g.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-                    return n1.includes(n2) || n2.includes(n1);
-                });
-
-                if (group) {
-                    // Merge into existing group
-                    // Merge GTFS IDs
-                    group.gtfsIds = Array.from(new Set([...group.gtfsIds, ...stop.gtfsIds]));
-
-                    // Merge lines (unique by line name/direction)
-                    const lineMap = new Map();
-                    [...group.lines, ...stop.lines].forEach(l => {
-                        const key = `${l.name}-${l.direction}-${l.direction2}`;
-                        if (!lineMap.has(key)) lineMap.set(key, l);
-                    });
-                    group.lines = Array.from(lineMap.values());
-
-                    // Merge is_night
-                    group.is_night = group.is_night && stop.is_night;
-
-                    // Keep platform if missing
-                    if (!group.platform && stop.platform) group.platform = stop.platform;
-                } else {
-                    // Start new group
-                    groupedStops.push({ ...stop });
-                }
-            }
-
-            processedStopsCache = groupedStops;
+            processedStopsCache = groupStops(rawStops);
             await saveJsonFile(STATIONS_FILE, processedStopsCache);
             updateStatusUI();
         }
@@ -312,7 +305,7 @@ async function initCaches() {
     // 1. Load Stations
     const cachedStations = await loadJsonFile(STATIONS_FILE);
     if (cachedStations) {
-        processedStopsCache = cachedStations;
+        processedStopsCache = groupStops(cachedStations);
     } else {
         await refreshStationsCache();
     }

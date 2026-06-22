@@ -207,8 +207,6 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
         platform ? `Platform ${platform}` : null,
         zone ? `Zone ${zone}` : null
     ].filter(Boolean);
-    const stopLines = React.useMemo(() => Array.isArray(stop.lines) ? stop.lines : [], [stop.lines]);
-    const hasLineRules = stopLines.length > 0;
 
     // Sticky Focus State: remembers the "intended" active trip even if it disappears momentarily
     const [autoRefocusTripId, setAutoRefocusTripId] = React.useState(null);
@@ -263,22 +261,6 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
                     return false;
                 }
 
-                // --- STRICT FILTERING BY STATION LINE/DIRECTION ---
-                const lineName = arrival.route?.short_name;
-                const headsign = (arrival.trip?.headsign || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-                if (hasLineRules) {
-                    const allowedLine = stopLines.find(l => String(l.name) === String(lineName));
-                    if (!allowedLine) return false;
-
-                    const d1 = (allowedLine.direction || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                    const d2 = (allowedLine.direction2 || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-                    const matchesDirection = headsign.includes(d1) || (d2 && headsign.includes(d2)) || d1.includes(headsign);
-                    if (!matchesDirection) return false;
-                }
-                // ----------------------------------------------------
-
                 const isThisActive = String(activeTripId) === String(arrival.trip.id);
                 // Threshold: -5s for instant switching (120s if active)
                 const threshold = isThisActive ? -120000 : -5000;
@@ -315,7 +297,7 @@ const StopModal = ({ stop, onClose, realTimeData, isLoadingRealTime, error, onDe
             return sorted.filter(d => String(d.trip.id) === String(activeTripId));
         }
         return sorted;
-    }, [realTimeData, activeTripId, now, stopLines, hasLineRules]);
+    }, [realTimeData, activeTripId, now]);
 
     // Effect to clear active trip focus if it departs (or restore if it returns)
     React.useEffect(() => {
