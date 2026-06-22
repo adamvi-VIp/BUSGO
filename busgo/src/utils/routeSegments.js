@@ -1,4 +1,5 @@
 const EMPTY_LINE = { type: 'LineString', coordinates: [] };
+const LIVE_ROUTE_SNAP_METERS = 5;
 
 function asCoord(value) {
   if (!Array.isArray(value) || value.length < 2) return null;
@@ -85,6 +86,13 @@ function projectPointToSegment(point, a, b) {
   return { projected, dist2 };
 }
 
+function distanceMeters(a, b) {
+  const lat = ((a[1] + b[1]) / 2) * Math.PI / 180;
+  const dx = (a[0] - b[0]) * 111320 * Math.cos(lat);
+  const dy = (a[1] - b[1]) * 111320;
+  return Math.hypot(dx, dy);
+}
+
 function pointByProjection(coords, position) {
   const point = asCoord(position);
   if (!point || coords.length < 2) return null;
@@ -98,7 +106,8 @@ function pointByProjection(coords, position) {
   return best ? {
     coordinates: best.projected,
     segmentIndex: best.segmentIndex,
-    bearing: bearingFrom(coords[best.segmentIndex], coords[best.segmentIndex + 1])
+    bearing: bearingFrom(coords[best.segmentIndex], coords[best.segmentIndex + 1]),
+    distanceMeters: distanceMeters(point, best.projected)
   } : null;
 }
 
@@ -110,9 +119,14 @@ function splitByProjection(coords, position) {
 export function snapVehicleToRoute(geometry, distances, vehiclePosition) {
   const coords = (geometry?.coordinates || []).map(asCoord).filter(Boolean);
   if (coords.length < 2 || !vehiclePosition) return vehiclePosition || null;
+  const projected = pointByProjection(coords, vehiclePosition.coordinates);
+  if (vehiclePosition.source === 'live') {
+    if (!projected || projected.distanceMeters > LIVE_ROUTE_SNAP_METERS) return vehiclePosition;
+    return { ...vehiclePosition, coordinates: projected.coordinates };
+  }
 
   const point = pointByDistance(coords, distances, vehiclePosition.shapeDistTraveled) ||
-    pointByProjection(coords, vehiclePosition.coordinates);
+    projected;
   if (!point) return vehiclePosition;
 
   const bearing = Number(vehiclePosition.bearing);
@@ -127,6 +141,11 @@ export function splitLineByProgress(geometry, distances, vehiclePosition) {
   const coords = (geometry?.coordinates || []).map(asCoord).filter(Boolean);
   if (coords.length < 2) return { past: EMPTY_LINE, future: EMPTY_LINE };
   if (!vehiclePosition) return { past: EMPTY_LINE, future: line(coords) };
+  if (vehiclePosition.isPlanned) return { past: EMPTY_LINE, future: line(coords) };
+  if (vehiclePosition.source === 'live') {
+    const projected = pointByProjection(coords, vehiclePosition.coordinates);
+    if (projected) return splitAt(coords, projected.segmentIndex, projected.coordinates);
+  }
 
   const byDistance = splitByDistance(coords, distances, vehiclePosition.shapeDistTraveled);
   if (byDistance) return byDistance;

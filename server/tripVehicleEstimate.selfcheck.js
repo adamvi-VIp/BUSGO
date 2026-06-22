@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 
 process.env.PID_API_KEY ||= 'self-check';
 
-const { estimateTripVehiclePosition } = await import('./server.js');
+const { estimateTripVehiclePosition, withTripScheduleState } = await import('./server.js');
 
-const position = estimateTripVehiclePosition({
+const tripPath = {
     geometry: { type: 'LineString', coordinates: [[0, 0], [10, 0], [20, 0]] },
     shapeDistances: [0, 10, 20],
     stops: [
@@ -12,11 +12,37 @@ const position = estimateTripVehiclePosition({
         { stop_id: 'B', departure_time: '10:10:00', stop_sequence: 2, lat: 0, lon: 10, shapeDistTraveled: 10 },
         { stop_id: 'C', departure_time: '10:20:00', stop_sequence: 3, lat: 0, lon: 20, shapeDistTraveled: 20 }
     ]
-}, {
+};
+
+const context = {
     anchorStopId: 'B',
     anchorScheduledDeparture: '2026-01-01T10:10:00Z',
     delaySeconds: 120
-}, Date.parse('2026-01-01T10:17:00Z'));
+};
+
+assert.equal(
+    estimateTripVehiclePosition(tripPath, context, Date.parse('2026-01-01T10:01:00Z')),
+    null
+);
+
+assert.deepEqual(
+    withTripScheduleState(
+        { source: 'live', coordinates: [2, 3], tracking: true, isApproximate: false },
+        tripPath,
+        context,
+        Date.parse('2026-01-01T10:01:00Z')
+    ),
+    {
+        source: 'live',
+        coordinates: [2, 3],
+        tracking: true,
+        isApproximate: false,
+        scheduleState: 'planned',
+        isPlanned: true
+    }
+);
+
+const position = estimateTripVehiclePosition(tripPath, context, Date.parse('2026-01-01T10:17:00Z'));
 
 assert.equal(position.source, 'estimated');
 assert.equal(position.isApproximate, true);
@@ -24,5 +50,10 @@ assert.equal(position.shapeDistTraveled, 15);
 assert.deepEqual(position.coordinates, [15, 0]);
 assert.equal(position.lastStopId, 'B');
 assert.equal(position.nextStopId, 'C');
+
+assert.equal(
+    estimateTripVehiclePosition(tripPath, context, Date.parse('2026-01-01T10:33:00Z')),
+    null
+);
 
 console.log('trip vehicle estimate self-check passed');

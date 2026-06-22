@@ -44,7 +44,8 @@ function vehicleToGeoJSON(position, routeGeometry, routeShapeDistances) {
     features: snapped?.coordinates
       ? [lineFeature({ type: 'Point', coordinates: snapped.coordinates }, {
         bearing: snapped.bearing || 0,
-        isApproximate: snapped.isApproximate === true
+        isApproximate: snapped.isApproximate === true,
+        isPlanned: snapped.isPlanned === true
       })]
       : []
   };
@@ -314,7 +315,8 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
           }
         });
 
-        const initialSegments = splitLineByProgress(routeGeometry, routeShapeDistances, tripVehiclePosition);
+        const initialVehicle = snapVehicleToRoute(routeGeometry, routeShapeDistances, tripVehiclePosition);
+        const initialSegments = splitLineByProgress(routeGeometry, routeShapeDistances, initialVehicle);
         map.addSource('route-past', { type: 'geojson', data: lineFeature(initialSegments.past) });
         map.addSource('route-future', { type: 'geojson', data: lineFeature(initialSegments.future) });
 
@@ -395,7 +397,11 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
             'icon-ignore-placement': true,
             'icon-rotate': ['get', 'bearing'],
             'icon-rotation-alignment': 'map',
-            'text-field': ['case', ['boolean', ['get', 'isApproximate'], false], 'approx', ''],
+            'text-field': ['case',
+              ['boolean', ['get', 'isPlanned'], false], 'planned',
+              ['boolean', ['get', 'isApproximate'], false], 'approx',
+              ''
+            ],
             'text-size': 9,
             'text-offset': [0, 4.15],
             'text-letter-spacing': 0.02,
@@ -403,7 +409,7 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
             'text-ignore-placement': true
           },
           paint: {
-            'icon-opacity': 1,
+            'icon-opacity': ['case', ['boolean', ['get', 'isPlanned'], false], 0.45, 1],
             'text-color': '#a1a8b3'
           }
         });
@@ -662,7 +668,8 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const segments = splitLineByProgress(routeGeometry, routeShapeDistances, tripVehiclePosition);
+    const vehicle = snapVehicleToRoute(routeGeometry, routeShapeDistances, tripVehiclePosition);
+    const segments = splitLineByProgress(routeGeometry, routeShapeDistances, vehicle);
     const past = map.getSource && map.getSource('route-past');
     const future = map.getSource && map.getSource('route-future');
     if (past && past.setData) past.setData(lineFeature(segments.past));

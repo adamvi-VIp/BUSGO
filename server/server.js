@@ -730,39 +730,12 @@ export async function fetchTripPath(tripId) {
 }
 
 export function estimateTripVehiclePosition(path, context, nowMs = Date.now()) {
-    const stops = Array.isArray(path?.stops) ? path.stops : [];
-    const anchorStop = stops.find(stop => stopMatchesId(stop, context?.anchorStopId));
-    const anchorRealMs = parseTimestamp(context?.anchorPredictedDeparture) ??
-        (() => {
-            const scheduled = parseTimestamp(context?.anchorScheduledDeparture);
-            const delaySeconds = toFiniteNumber(context?.delaySeconds) ?? 0;
-            return scheduled === null ? null : scheduled + delaySeconds * 1000;
-        })();
+    const timing = getTripTiming(path, context, nowMs);
+    if (!timing) return null;
 
-    if (!anchorStop || anchorRealMs === null) return null;
+    const { timedStops, targetTime } = timing;
+    if (targetTime < timedStops[0].time || targetTime > timedStops[timedStops.length - 1].time) return null;
 
-    let dayOffset = 0;
-    let previousTime = null;
-    const timedStops = stops
-        .map(stop => {
-            const rawTime = parseGtfsTime(stop.departure_time || stop.arrival_time);
-            if (rawTime === null) return null;
-            while (previousTime !== null && rawTime + dayOffset <= previousTime) dayOffset += 86400;
-            const time = rawTime + dayOffset;
-            previousTime = time;
-            return {
-                ...stop,
-                time,
-                distance: projectStopDistance(stop, path.geometry, path.shapeDistances)
-            };
-        })
-        .filter(stop => stop && stop.distance !== null);
-
-    if (timedStops.length === 0) return null;
-    const timedAnchor = timedStops.find(stop => stopMatchesId(stop, context.anchorStopId));
-    if (!timedAnchor) return null;
-
-    const targetTime = timedAnchor.time + (nowMs - anchorRealMs) / 1000;
     let previous = timedStops[0];
     let next = timedStops[timedStops.length - 1];
 
@@ -798,7 +771,63 @@ export function estimateTripVehiclePosition(path, context, nowMs = Date.now()) {
         tracking: false,
         source: 'estimated',
         isApproximate: true,
+        scheduleState: 'active',
         anchorStopId: context.anchorStopId
+    };
+}
+
+function getTripTiming(path, context, nowMs = Date.now()) {
+    const stops = Array.isArray(path?.stops) ? path.stops : [];
+    const anchorStop = stops.find(stop => stopMatchesId(stop, context?.anchorStopId));
+    const anchorRealMs = parseTimestamp(context?.anchorPredictedDeparture) ??
+        (() => {
+            const scheduled = parseTimestamp(context?.anchorScheduledDeparture);
+            const delaySeconds = toFiniteNumber(context?.delaySeconds) ?? 0;
+            return scheduled === null ? null : scheduled + delaySeconds * 1000;
+        })();
+
+    if (!anchorStop || anchorRealMs === null) return null;
+
+    let dayOffset = 0;
+    let previousTime = null;
+    const timedStops = stops
+        .map(stop => {
+            const rawTime = parseGtfsTime(stop.departure_time || stop.arrival_time);
+            if (rawTime === null) return null;
+            while (previousTime !== null && rawTime + dayOffset <= previousTime) dayOffset += 86400;
+            const time = rawTime + dayOffset;
+            previousTime = time;
+            return {
+                ...stop,
+                time,
+                distance: projectStopDistance(stop, path.geometry, path.shapeDistances)
+            };
+        })
+        .filter(stop => stop && stop.distance !== null);
+
+    if (timedStops.length === 0) return null;
+    const timedAnchor = timedStops.find(stop => stopMatchesId(stop, context.anchorStopId));
+    if (!timedAnchor) return null;
+
+    const targetTime = timedAnchor.time + (nowMs - anchorRealMs) / 1000;
+    return { timedStops, targetTime };
+}
+
+export function getTripScheduleState(path, context, nowMs = Date.now()) {
+    const timing = getTripTiming(path, context, nowMs);
+    if (!timing) return 'unknown';
+    if (timing.targetTime < timing.timedStops[0].time) return 'planned';
+    if (timing.targetTime > timing.timedStops[timing.timedStops.length - 1].time) return 'finished';
+    return 'active';
+}
+
+export function withTripScheduleState(position, path, context, nowMs = Date.now()) {
+    if (!position) return null;
+    const scheduleState = getTripScheduleState(path, context, nowMs);
+    return {
+        ...position,
+        scheduleState,
+        ...(position.source === 'live' && scheduleState === 'planned' ? { isPlanned: true } : {})
     };
 }
 
@@ -862,15 +891,15 @@ async function fetchLiveTripVehiclePosition(tripId) {
 async function fetchTripVehiclePosition(tripData, path = null) {
     const context = resolveTripContext(tripData);
     if (!context.tripId) return null;
+    const tripPath = path || await fetchTripPath(context.tripId);
 
     try {
         const live = await fetchLiveTripVehiclePosition(context.tripId);
-        if (live) return live;
+        if (live) return withTripScheduleState(live, tripPath, context);
     } catch (error) {
         console.error(`[API] Vehicle position fetch failed for ${context.tripId}: ${error.message}`);
     }
 
-    const tripPath = path || await fetchTripPath(context.tripId);
     return estimateTripVehiclePosition(tripPath, context);
 }
 
