@@ -1,0 +1,56 @@
+name: Render README map hero
+
+on:
+  push:
+    paths:
+      - '.github/workflows/render-readme-hero.yml'
+      - 'scripts/render_readme_hero.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
+        run: npm install --no-save --no-package-lock playwright
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Render BusGo map hero
+        run: node scripts/render_readme_hero.mjs
+
+      - name: Point README at rendered hero
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('README.md')
+          text = p.read_text()
+          text = text.replace('./docs/busgo-splash.svg', './docs/busgo-map-hero.png')
+          p.write_text(text)
+          PY
+          rm -f docs/busgo-splash.svg
+
+      - name: Commit generated hero
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md docs/busgo-map-hero.png docs/busgo-splash.svg
+          if git diff --cached --quiet; then
+            echo 'No generated changes to commit.'
+          else
+            git commit -m 'docs: use actual BusGo map in README hero'
+            git push
+          fi
