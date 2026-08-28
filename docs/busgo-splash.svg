@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="300" viewBox="0 0 900 300" role="img" aria-labelledby="title desc">
+  <title id="title">BusGo startup splash</title>
+  <desc id="desc">BusGo wordmark as shown on the application startup screen.</desc>
+  <rect width="900" height="300" fill="#000000"/>
+  <text
+    x="450"
+    y="150"
+    dominant-baseline="central"
+    text-anchor="middle"
+    font-family="Onest, Inter, Arial, sans-serif"
+    font-size="128"
+    font-weight="900"
+    letter-spacing="-4"
+    fill="#2563eb"
+    stroke="#ffffff"
+    stroke-width="4"
+    paint-order="stroke fill"
+  >BusGo</text>
+</svg>
