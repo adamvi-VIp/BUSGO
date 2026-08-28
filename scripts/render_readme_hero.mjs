@@ -38,7 +38,17 @@ try {
   });
 
   const canvas = page.locator('.maplibregl-canvas');
-  await canvas.waitFor({ state: 'visible', timeout: 120000 });
+  await page.waitForTimeout(15000);
+  const debugState = await page.evaluate(() => ({
+    title: document.title,
+    bodyText: document.body?.innerText?.slice(0, 2000) || '',
+    bodyHtml: document.body?.innerHTML?.slice(0, 2000) || ''
+  }));
+  console.log('Deployed app state:', JSON.stringify(debugState));
+  console.log('Page errors:', JSON.stringify(pageErrors));
+  if (!(await canvas.isVisible())) {
+    throw new Error('The deployed app did not create its MapLibre canvas. ' + pageErrors.join('\n'));
+  }
   await page.waitForFunction(() => {
     const splash = document.querySelector('#splash-screen');
     if (!splash) return true;
