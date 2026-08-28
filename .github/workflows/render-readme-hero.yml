@@ -32,6 +32,14 @@ jobs:
       - name: Render BusGo map hero
         run: node scripts/render_readme_hero.mjs
 
+      - name: Upload rendered hero for visual review
+        uses: actions/upload-artifact@v4
+        with:
+          name: busgo-map-hero
+          path: docs/busgo-map-hero.png
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Point README at rendered hero
         run: |
           python - <<'PY'
