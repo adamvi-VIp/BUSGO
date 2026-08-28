@@ -1,5 +1,9 @@
 # BusGo
 
+<p align="center">
+  <img src="./docs/busgo-splash.svg" alt="BusGo startup splash" width="720" />
+</p>
+
 BusGo is a real-time public transport departure application for Prague, Czech Republic. It combines live PID data with a responsive React interface, an interactive MapLibre map, location-aware stop discovery, and real-time updates through Socket.IO.
 
 ## Features
