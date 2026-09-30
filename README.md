@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./docs/busgo-map-hero.png" alt="BusGo map preview" width="720" />
+  <img src="busgo/public/icon-512x512.PNG" alt="BUSGO app icon" width="96" />
 </p>
 
 # BUSGO
