@@ -117,3 +117,7 @@
     height: calc(var(--vh, 1vh) * 100);
   }
 }
+/* Keep map attribution readable above the collapsed departure sheet. */
+.maplibregl-map .maplibregl-ctrl-top-right {
+  top: calc(env(safe-area-inset-top, 0px) + 120px);
+}

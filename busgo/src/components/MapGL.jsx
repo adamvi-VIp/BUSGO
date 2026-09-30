@@ -200,13 +200,10 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
         'carto-dark': {
           type: 'raster',
           tiles: [
-            'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-            'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-            'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-            'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+            `https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png?key=${encodeURIComponent(import.meta.env.VITE_CARTO_API_KEY || '')}`
           ],
           tileSize: 256,
-          attribution: ''
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
         }
       },
       layers: [
@@ -237,6 +234,8 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
 
     // Disable pinch-to-rotate specific behavior while keeping pinch-to-zoom
     map.touchZoomRotate.disableRotation();
+    // Keep credits above the bottom sheet and below the search field.
+    map.addControl(new maplibregl.AttributionControl({ compact: false }), 'top-right');
 
     mapRef.current = map;
 

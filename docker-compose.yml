@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      args:
+        VITE_CARTO_API_KEY: ${VITE_CARTO_API_KEY:-}
     ports:
       - "80:80"
     depends_on:
@@ -21,9 +23,8 @@ services:
       dockerfile: Dockerfile.backend
     ports:
       - "3001:3001"
-    # Use 'development' for local runs to ensure .env is loaded by dotenv
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - TZ=Europe/Prague
       - PORT=3001
     # This line makes the .env file available to the container
@@ -35,4 +36,4 @@ services:
 
 networks:
   busgo-network:
-    driver: bridge 
+    driver: bridge

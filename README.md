@@ -1,200 +1,122 @@
-# BusGo
-
 <p align="center">
-  <img src="./docs/busgo-map-hero.png" alt="BusGo startup splash" width="720" />
+  <img src="./docs/busgo-map-hero.png" alt="BusGo map preview" width="720" />
 </p>
 
-BusGo is a real-time public transport departure application for Prague, Czech Republic. It combines live PID data with a responsive React interface, an interactive MapLibre map, location-aware stop discovery, and real-time updates through Socket.IO.
+# BUSGO
 
-## Features
+**Prague public transport, on a live map.**
 
-- Real-time departures from the Prague PID/Golemio API
-- Interactive map powered by MapLibre GL
-- Nearby-stop discovery using device location
-- Automatic stop loading as the map moves
-- Live delay and departure status information
-- Vehicle and route information
-- Air-conditioning and accessibility indicators when available
-- Favorites for quick access to frequently used stops
-- Responsive mobile-first interface
-- Progressive Web App support with basic offline caching
-- Haptic feedback on supported devices
-- Prague timezone handling
+BUSGO is a personal full-stack project for exploring nearby PID stops, checking upcoming departures, and following a selected journey. It combines a mobile-first React interface with an Express and Socket.IO backend that fetches and caches transit data from Golemio.
 
-## Tech Stack
+## What it does
 
-### Frontend
+- **Explore nearby stops** using your location or by moving the map.
+- **Check departure boards** with scheduled and predicted times, delays, platforms, and available vehicle information.
+- **Follow a journey** with route geometry, upcoming stops, and a vehicle marker. Where live positioning is unavailable, positions may be estimated from the timetable.
+- **See multiple transport modes** including buses, trams, metro, trains, ferries, and trolleybuses.
+- **Install it as a PWA** with an app icon, service worker, and update flow.
 
-- React 18
-- Vite
-- Tailwind CSS
-- MapLibre GL
-- Socket.IO Client
-- Axios
-- Framer Motion
+The interface uses a dark map, custom transport icons, animations, and haptic feedback where supported. Live departures and fresh map tiles require an internet connection.
 
-### Backend
+## Built with
 
-- Node.js
-- Express
-- Socket.IO
-- Axios
-- CORS
-- dotenv
+| Layer | Technology |
+| --- | --- |
+| Interface | React 18, Vite, Tailwind CSS, Framer Motion |
+| Map | MapLibre GL JS, CARTO Dark Matter, OpenStreetMap |
+| Backend | Node.js, Express, Socket.IO, Axios |
+| Data | PID stop data and Golemio APIs |
+| Deployment | Docker Compose and Nginx |
 
-### Infrastructure
+The backend shares departure polling across clients watching the same stop and caches transit data locally. The frontend renders stop markers, route progress, and vehicle positions as map layers.
 
-- Docker
-- Docker Compose
-- Nginx
+## Run locally
 
-## Requirements
+Install Node.js 22+ and npm, then run:
 
-For local development:
+```sh
+git clone https://github.com/adamvi-VIp/BUSGO.git
+cd BUSGO
+npm install
+```
 
-- Node.js and npm
-- A PID/Golemio API key
+Copy `.env.example` to `.env` in the repository root. On PowerShell:
 
-For containerized deployment:
+```powershell
+Copy-Item .env.example .env
+```
 
-- Docker
-- Docker Compose
-- A PID/Golemio API key
+On macOS or Linux:
 
-You can request an API key from [Golemio](https://api.golemio.cz/).
-
-## Configuration
-
-Copy the example environment file:
-
-```bash
+```sh
 cp .env.example .env
 ```
 
-Then set your API key in `.env`:
+Fill in your keys, then start both services **from the repository root**:
 
-```env
-NODE_ENV=production
-PORT=3001
-TZ=Europe/Prague
-PID_API_KEY=your_api_key_here
-```
-
-`DOMAIN` can also be configured when needed for deployment.
-
-## Local Development
-
-Install frontend dependencies:
-
-```bash
-cd busgo
-npm install
-```
-
-Install backend dependencies:
-
-```bash
-cd ../server
-npm install
-```
-
-Start the backend:
-
-```bash
+```sh
 npm run dev
 ```
 
-In another terminal, start the frontend:
+Open [localhost:5173](http://localhost:5173). The backend listens on port 3001; Vite proxies Socket.IO and API requests to it. Allow location access to find nearby stops, or explore the map manually.
 
-```bash
-cd busgo
-npm run client
-```
+## Configuration
 
-The frontend is served by Vite during development and the backend listens on port `3001` by default.
+| Variable | Purpose | Visibility |
+| --- | --- | --- |
+| `PID_API_KEY` | Golemio transit API access | Private; backend only |
+| `VITE_CARTO_API_KEY` | CARTO basemap tile access | Public browser key; embedded at build time |
+| `PORT` | Backend port, default `3001` | Server configuration |
+| `NODE_ENV` | `development` locally, `production` when deployed | Server configuration |
+| `TZ` | `Europe/Prague` | Server configuration |
 
-## Docker Deployment
+Get transit credentials from [Golemio](https://api.golemio.cz/) and a map key from [CARTO](https://www.carto.com/basemaps/apikey/). Restrict the CARTO key to the domains you use, including your local development origin when supported. Review usage limits in your provider dashboard.
 
-Build and start the application:
+`.env` and its local variants are ignored by Git and excluded from Docker build contexts. Only placeholder examples belong in Git. **A browser key is still visible in downloaded JavaScript and tile requests**: `.env` keeps it out of source control, not out of the browser. Never prefix a private credential with `VITE_`. See [Vite's environment-variable documentation](https://vite.dev/guide/env-and-mode).
 
-```bash
+Restart Vite after changing the map key. Production frontend builds must be rebuilt when that key changes. If the map says **API key required**, check `VITE_CARTO_API_KEY` and the provider's domain restrictions.
+
+## Docker Compose
+
+After configuring the root `.env`:
+
+```sh
 docker compose up --build -d
 ```
 
-Default ports:
+Open [localhost](http://localhost). Compose supplies the public CARTO key as a frontend build argument and injects the backend configuration at runtime. Never supply `PID_API_KEY` as a frontend build argument.
 
-- Frontend: `http://localhost`
-- Backend: `http://localhost:3001`
+For builds using `Dockerfile`, `Dockerfile.frontend`, `Dockerfile.standalone`, or `Dockerfile.koyeb`, set the `VITE_CARTO_API_KEY` build argument. Setting it only at container runtime cannot change an already-built frontend. The standalone frontend images still need a separately configured backend proxy for live transit data; Compose includes that wiring.
 
-Useful commands:
+## Checks
 
-```bash
-# Follow logs
-docker compose logs -f
-
-# Check service status
-docker compose ps
-
-# Restart services
-docker compose restart
-
-# Stop services
-docker compose down
-
-# Rebuild after changes
-docker compose up --build -d
+```sh
+npm run check:public-config
+npm run build --prefix busgo
+node busgo/src/utils/routeSegments.selfcheck.js
+node busgo/src/utils/stopIdentity.selfcheck.js
 ```
 
-## Project Structure
+The public configuration check builds with fake credentials and verifies that the browser bundle contains the map key but excludes the private PID key. Backend regression checks are in `server/*.selfcheck.js` and can be run with Node individually.
+
+## Project layout
 
 ```text
-BUSGO/
-├── busgo/                  # React + Vite frontend
-│   ├── public/             # Public/PWA assets
-│   ├── src/                # Frontend source code
-│   └── package.json
-├── server/                 # Node.js + Socket.IO backend
-│   ├── server.js           # Backend entry point
-│   └── package.json
-├── scripts/                # Project utility scripts
-├── Dockerfile              # Main build image
-├── Dockerfile.frontend     # Frontend container image
-├── Dockerfile.backend      # Backend container image
-├── docker-compose.yml      # Local/container orchestration
-├── nginx.conf              # Frontend/reverse-proxy configuration
-├── .env.example            # Environment variable template
-└── README.md
+busgo/       React interface, map layers, icons, and PWA assets
+server/      Transit API integration, polling, caching, and regression checks
+scripts/     Development utilities and configuration verification
 ```
 
-## PWA and Updates
-
-BusGo includes service-worker caching and application versioning for installed PWA users.
-
-See [PWA Update & Versioning Guide](./PWA_UPDATE_GUIDE.md) for the current update flow.
-
-## Additional Documentation
-
-- [PWA Update & Versioning Guide](./PWA_UPDATE_GUIDE.md)
-- [Haptics](./HAPTICS.md)
-- [Koyeb secrets setup](./KOYEB_SECRETS_SETUP.md)
-
-## Security Notes
-
-- Keep `PID_API_KEY` and other secrets in environment variables.
-- Do not commit `.env` files containing credentials.
-- Route public API access through the backend where possible instead of exposing private credentials to the frontend.
+See the [PWA update guide](PWA_UPDATE_GUIDE.md) for app versioning and [Koyeb configuration notes](KOYEB_SECRETS_SETUP.md) for hosting configuration.
 
 ## Contributing
 
-Issues and pull requests are welcome. For changes that affect behavior, include a short explanation of the problem, the approach taken, and how the change was tested.
+Issues and pull requests are welcome. Explain the change and how it was tested; run the checks above before submitting. See [Haptics](HAPTICS.md) for notes on supported device feedback.
 
-Before opening a pull request, make sure the frontend builds successfully:
+## Project status and credits
 
-```bash
-cd busgo
-npm run build
-```
+This is an independent personal project, not an official PID or Golemio application. Data availability, prediction accuracy, and vehicle coverage depend on the upstream services; estimated positions are not GPS observations.
 
-## Project Status
+Map data: © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright). Basemap: © [CARTO](https://carto.com/attributions). Transit data comes from [PID](https://pid.cz/) and [Golemio](https://api.golemio.cz/). Their data, tiles, and branding remain subject to their respective terms.
 
-BusGo is a working personal project focused on live Prague public transport information. Current development includes map behavior, live vehicle positioning, departure data, PWA versioning, and user-interface refinements.
+No open-source license has been selected for this repository yet. Public visibility alone does not grant permission to redistribute its code or assets.

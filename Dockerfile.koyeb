@@ -18,6 +18,9 @@ RUN npm ci
 # Copy source code
 COPY busgo/ .
 
+# Public browser key only; never pass PID_API_KEY as a build argument.
+ARG VITE_CARTO_API_KEY
+
 # Build the app
 RUN npm run build
 
