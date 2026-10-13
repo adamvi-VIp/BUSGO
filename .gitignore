@@ -11,6 +11,7 @@ node_modules
 *.log
 dist/
 coverage/
+graphify-out/
 debug_report.txt
 scripts/matching_results.txt
 stops.json

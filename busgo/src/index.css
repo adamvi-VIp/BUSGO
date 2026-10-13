@@ -117,7 +117,61 @@
     height: calc(var(--vh, 1vh) * 100);
   }
 }
-/* Keep map attribution readable above the collapsed departure sheet. */
+/* Keep the info button beside the title and expanded credits below the search field. */
 .maplibregl-map .maplibregl-ctrl-top-right {
-  top: calc(env(safe-area-inset-top, 0px) + 120px);
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  z-index: 30;
+}
+
+.maplibregl-map .maplibregl-ctrl.maplibregl-ctrl-attrib {
+  margin: 8px 16px;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+  background: rgba(30, 33, 36, 0.94);
+  color: #cbd5e1;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 24px;
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib a {
+  color: inherit;
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib.maplibregl-compact {
+  min-height: 24px;
+  padding: 6px 36px 6px 0;
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib.maplibregl-compact-show {
+  padding: 6px 36px 6px 0;
+}
+
+.maplibregl-map .maplibregl-compact .maplibregl-ctrl-attrib-inner {
+  position: absolute;
+  top: 110px;
+  right: 0;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+  background: rgba(30, 33, 36, 0.94);
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib .maplibregl-ctrl-attrib-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  background-color: transparent;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 20px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20' fill='none' stroke='%23cbd5e1' stroke-width='1.5'%3E%3Ccircle cx='10' cy='10' r='7.25'/%3E%3Cpath d='M10 9v5M10 6v1'/%3E%3C/svg%3E");
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib-button:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
 }

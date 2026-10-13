@@ -65,7 +65,7 @@ Open [localhost:5173](http://localhost:5173). The backend listens on port 3001; 
 | Variable | Purpose | Visibility |
 | --- | --- | --- |
 | `PID_API_KEY` | Golemio transit API access | Private; backend only |
-| `VITE_CARTO_API_KEY` | CARTO basemap tile access | Public browser key; embedded at build time |
+| `VITE_CARTO_API_KEY` | Optional CARTO dark map; blank uses standard OpenStreetMap | Public browser key; embedded at build time |
 | `PORT` | Backend port, default `3001` | Server configuration |
 | `NODE_ENV` | `development` locally, `production` when deployed | Server configuration |
 | `TZ` | `Europe/Prague` | Server configuration |
@@ -74,7 +74,7 @@ Get transit credentials from [Golemio](https://api.golemio.cz/) and a map key fr
 
 `.env` and its local variants are ignored by Git and excluded from Docker build contexts. Only placeholder examples belong in Git. **A browser key is still visible in downloaded JavaScript and tile requests**: `.env` keeps it out of source control, not out of the browser. Never prefix a private credential with `VITE_`. See [Vite's environment-variable documentation](https://vite.dev/guide/env-and-mode).
 
-Restart Vite after changing the map key. Production frontend builds must be rebuilt when that key changes. If the map says **API key required**, check `VITE_CARTO_API_KEY` and the provider's domain restrictions.
+Restart Vite after changing the map key. Production frontend builds must be rebuilt when that key changes. With no key, the app uses the standard OpenStreetMap map and visible attribution. With a key, it uses CARTO's dark map; an invalid key or domain restriction must be corrected in CARTO, or the key cleared before rebuilding. External tiles use the browser's HTTP cache rather than the PWA's permanent asset cache. OpenStreetMap's public tiles are for normal interactive viewing, subject to its [tile usage policy](https://operations.osmfoundation.org/policies/tiles/); do not add bulk downloads or offline tile prefetching.
 
 ## Docker Compose
 

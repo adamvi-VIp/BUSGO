@@ -3,10 +3,30 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 import { build, loadConfigFromFile, loadEnv } from '../busgo/node_modules/vite/dist/node/index.js';
+import { getBasemapStyle } from '../busgo/src/utils/basemap.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const configFile = path.join(root, 'busgo/vite.config.js');
+for (const key of [undefined, '', '   ']) {
+  const style = getBasemapStyle(key);
+  assert.deepEqual(style.sources.basemap.tiles, ['https://tile.openstreetmap.org/{z}/{x}/{y}.png']);
+  assert.equal(style.sources.basemap.maxzoom, 19, 'Higher zooms must reuse available OSM tiles');
+  assert.ok(!style.sources.basemap.attribution.includes('CARTO'));
+}
+const keyed = getBasemapStyle(' test&key=123 ');
+assert.ok(keyed.sources.basemap.tiles[0].endsWith('?key=test%26key%3D123'));
+assert.ok(keyed.sources.basemap.attribution.includes('CARTO'));
+
+const listeners = {};
+runInNewContext(await readFile(path.join(root, 'busgo/public/service-worker.js'), 'utf8'), {
+  URL,
+  self: { location: new URL('https://busgo.example/'), addEventListener: (name, handler) => { listeners[name] = handler; } }
+});
+for (const url of ['https://tile.openstreetmap.org/19/283168/177411.png', 'https://basemaps.cartocdn.com/dark_all/16/35396/22176.png?key=test']) {
+  listeners.fetch({ request: { url }, respondWith: () => assert.fail('External tiles must bypass the service-worker asset cache') });
+}
 const { config } = await loadConfigFromFile({ command: 'build', mode: 'production' }, configFile);
 assert.equal(path.resolve(config.envDir), path.resolve(root), 'Vite must read the root .env');
 assert.ok(!Object.hasOwn(loadEnv('production', root), 'PID_API_KEY'), 'PID key must stay private');
@@ -28,9 +48,10 @@ try {
   assert.ok(bundle.includes('busgo-public-map-check'), 'Map key must reach the browser');
   assert.ok(!bundle.includes('busgo-private-pid-check'), 'PID key must never reach the browser');
   assert.ok(bundle.includes('basemaps.cartocdn.com/dark_all/'), 'CARTO tiles must remain configured');
+  assert.ok(bundle.includes('tile.openstreetmap.org/'), 'Keyless map fallback must be included');
   assert.ok(!bundle.includes('{r}.png'), 'MapLibre does not expand the Leaflet retina placeholder');
   assert.ok(bundle.includes('OpenStreetMap contributors'), 'Map attribution must be included');
-  console.log('Public configuration check passed: map key included, PID key excluded.');
+  console.log('Public configuration check passed: keyless/keyed maps, zoom limit, tile cache bypass, and private-key exclusion.');
 } finally {
   process.chdir(originalCwd);
   if (originalMapKey === undefined) delete process.env.VITE_CARTO_API_KEY;

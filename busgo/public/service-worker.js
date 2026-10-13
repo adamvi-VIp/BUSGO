@@ -1,5 +1,5 @@
-const CACHE_NAME = 'busgo-pwa-v1782149438361';
-const FONTS_CACHE = 'busgo-fonts-v1782149438361';
+const CACHE_NAME = 'busgo-pwa-v1791879130510';
+const FONTS_CACHE = 'busgo-fonts-v1791879130510';
 const IS_DEV = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1';
 
 // Precache core assets + requested resources
@@ -106,6 +106,9 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
+
+  // External tiles must obey the provider's HTTP cache expiry, not our cache-first asset policy.
+  if (reqUrl.origin !== self.location.origin) return;
 
   // Ensure SplashScreen, Icons, or built asset variants are cached when requested
   if (reqUrl.pathname.startsWith('/src/assets/') ||

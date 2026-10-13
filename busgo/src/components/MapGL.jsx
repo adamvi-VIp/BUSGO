@@ -27,6 +27,7 @@ import ferryIconDimmed from '../assets/ferry-icon-dimmed.png';
 import trolleybusIconDimmed from '../assets/trolleybus-icon-dimmed.png';
 import nightIconDimmed from '../assets/night-icon-dimmed.png';
 import { snapVehicleToRoute, splitLineByProgress } from '../utils/routeSegments.js';
+import { getBasemapStyle } from '../utils/basemap.js';
 
 const DEFAULT_CENTER = [14.4378, 50.0755]; // Prague
 const DEFAULT_ZOOM = 16;
@@ -193,34 +194,7 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
         ? [userLocation.longitude, userLocation.latitude]
         : DEFAULT_CENTER);
 
-    const style = {
-      version: 8,
-      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
-      sources: {
-        'carto-dark': {
-          type: 'raster',
-          tiles: [
-            `https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png?key=${encodeURIComponent(import.meta.env.VITE_CARTO_API_KEY || '')}`
-          ],
-          tileSize: 256,
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        }
-      },
-      layers: [
-        {
-          id: 'carto-dark-layer',
-          type: 'raster',
-          source: 'carto-dark',
-          paint: {
-            'raster-brightness-min': 0.05,
-            'raster-brightness-max': 1.0,
-            'raster-contrast': -0.08,
-            'raster-saturation': -0.15,
-            'raster-opacity': 0.98
-          }
-        }
-      ]
-    };
+    const style = getBasemapStyle(import.meta.env.VITE_CARTO_API_KEY);
 
     const map = new maplibregl.Map({
       container: containerRef.current,
@@ -234,8 +208,8 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
 
     // Disable pinch-to-rotate specific behavior while keeping pinch-to-zoom
     map.touchZoomRotate.disableRotation();
-    // Keep credits above the bottom sheet and below the search field.
-    map.addControl(new maplibregl.AttributionControl({ compact: false }), 'top-right');
+    // Compact credits on small screens; MapLibre collapses them when the map is dragged.
+    map.addControl(new maplibregl.AttributionControl({}), 'top-right');
 
     mapRef.current = map;
 
@@ -775,7 +749,7 @@ const MapGL = ({ stops, userLocation, onStopSelect, selectedStop, socket, isRefr
   }, [programmaticMoveRef]);
 
   return (
-    <div className="absolute inset-0 z-0 h-full w-full">
+    <div className="absolute inset-0 h-full w-full">
       <div ref={containerRef} style={{ height: '100%', width: '100%' }} />
     </div>
   );
